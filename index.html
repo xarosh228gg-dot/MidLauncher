@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Лаунчер</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+  window.onerror = function(msg, src, line) {
+    var sub = document.getElementById('splashSub');
+    if (sub) sub.innerHTML = '<span style="color:#ff6666;font-size:11px">ERR line '+line+': '+msg+'</span>';
+    return false;
+  };
+  setTimeout(function() {
+    var s = document.getElementById('splashScreen');
+    var c = document.getElementById('content');
+    if (s) s.style.cssText = 'display:none!important';
+    if (c) { c.style.opacity = '1'; c.style.transition = 'none'; }
+  }, 3000);
+</script>
+</head>
+<body>
+
+<canvas id="particleBg"></canvas>
+
+<div id="splashScreen">
+  <div id="splashBlur"></div>
+  <div id="splashContent">
+    <div id="splashGreeting">Приветствую</div>
+    <div id="splashSub" data-i18n="loading">Загрузка...</div>
+  </div>
+</div>
+
+<div class="nav">
+  <div class="menu">
+    <div class="menu-item active" data-target="launcher" data-i18n="nav_launcher">Лаунчер</div>
+    <div class="menu-item" data-target="mods" data-i18n="nav_mods">Моды</div>
+    <div class="menu-item" data-target="files" data-i18n="nav_files">Файлы</div>
+    <div class="menu-item" data-target="settings" data-i18n="nav_settings">Настройки</div>
+    <div class="active-line" id="activeLine"></div>
+  </div>
+  <div class="nav-divider"></div>
+  <div class="account-btn" id="accountBtn" data-i18n-title="ac_title">
+    <canvas id="accountBtnCanvas" width="38" height="38"></canvas>
+    <span id="accountBtnLetter">👤</span>
+  </div>
+</div>
+
+<div id="content"></div>
+
+<!-- Account overlay + panel -->
+<div id="accountOverlay" onclick="closeAccountPanel()"></div>
+<div id="accountPanel">
+  <div id="acPanelHeader">
+    <h2 data-i18n="ac_title">Аккаунт</h2>
+    <button id="acCloseBtn" onclick="closeAccountPanel()">✕</button>
+  </div>
+  <div id="acTabs">
+    <button class="ac-tab active" onclick="acShowTab('accounts')" data-i18n="ac_tab_accounts">Аккаунты</button>
+    <button class="ac-tab" onclick="acShowTab('add')" data-i18n="ac_tab_add">+ Добавить</button>
+  </div>
+  <div id="acPanelBody">
+    <div id="acTabBodyAccounts">
+      <div id="acActiveSkinWrap" style="display:none">
+        <div id="acActiveSkinCanvas3d"></div>
+        <div class="ac-active-info">
+          <div class="ac-active-name" id="acActiveName">—</div>
+          <div class="ac-active-type" id="acActiveType">—</div>
+        </div>
+      </div>
+      <div class="ac-section-label" data-i18n="ac_available">Доступные аккаунты</div>
+      <div id="acAccountList"></div>
+    </div>
+    <div id="acTabBodyAdd" style="display:none">
+      <div class="ac-section-label" data-i18n="ac_add_account">Добавить аккаунт</div>
+      <div class="ac-method" id="acMethodElyby">
+        <div class="ac-method-header" onclick="acToggleMethod('elyby')">
+          <div class="ac-method-titles"><div class="ac-method-title">Ely.by</div><div class="ac-method-sub" data-i18n="ac_elyby_sub">Авторизация через браузер</div></div>
+          <span class="ac-method-arrow">▶</span>
+        </div>
+        <div class="ac-method-body" id="acBodyElyby">
+          <div style="font-size:11px;color:#484860;line-height:1.5;margin-bottom:4px;" data-i18n="ac_elyby_hint"></div>
+          <div class="ac-error" id="elybyError"></div>
+          <button class="ac-method-btn" onclick="acLoginElyby()" data-i18n="login_elyby">Войти через Ely.by</button>
+        </div>
+      </div>
+      <div class="ac-method" id="acMethodMs">
+        <div class="ac-method-header" onclick="acToggleMethod('ms')">
+          <div class="ac-method-titles"><div class="ac-method-title">Microsoft</div><div class="ac-method-sub" data-i18n="ac_ms_sub">Лицензионный аккаунт Minecraft</div></div>
+          <span class="ac-method-arrow">▶</span>
+        </div>
+        <div class="ac-method-body" id="acBodyMs">
+          <div style="font-size:11px;color:#484860;line-height:1.5;margin-bottom:4px;" data-i18n="ac_ms_hint"></div>
+          <div class="ac-error" id="msError"></div>
+          <button class="ac-method-btn ms-btn" onclick="acLoginMs()" data-i18n="login_ms">Войти через Microsoft</button>
+        </div>
+      </div>
+      <div class="ac-method" id="acMethodLocal">
+        <div class="ac-method-header" onclick="acToggleMethod('local')">
+          <div class="ac-method-titles"><div class="ac-method-title" data-i18n="ac_type_local">Офлайн</div><div class="ac-method-sub" data-i18n="ac_local_sub">Без авторизации</div></div>
+          <span class="ac-method-arrow">▶</span>
+        </div>
+        <div class="ac-method-body" id="acBodyLocal">
+          <div class="ac-input-group">
+            <div class="ac-input-label" data-i18n="ac_nickname">Никнейм</div>
+            <input type="text" id="localUsername" placeholder="Steve" maxlength="16" autocomplete="off" oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
+          </div>
+          <div class="ac-error" id="localError"></div>
+          <div style="font-size:10.5px;color:#883333;margin-top:4px;" data-i18n="ac_offline_warn"></div>
+          <button class="ac-method-btn local-btn" onclick="acLoginLocal()" data-i18n="play_offline">Играть офлайн</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Log overlay -->
+<div id="logOverlay">
+  <div id="logHeader"><span data-i18n="log_title">Лог</span><button onclick="closeLog()">✕</button></div>
+  <div id="logBody" data-i18n="log_empty">Лог пуст...</div>
+</div>
+
+<!-- Version edit popup -->
+<div id="verEditPopup">
+  <div class="ver-edit-input"><input id="verEditName" type="text" maxlength="50" placeholder="Название версии"></div>
+  <button class="ver-edit-btn" id="verEditSaveBtn" data-i18n="ver_save_name">✓ Сохранить название</button>
+  <button class="ver-edit-btn danger" id="verEditDeleteBtn" data-i18n="ver_delete">🗑 Удалить версию</button>
+</div>
+
+<!-- Create version modal -->
+<div id="modalOverlay">
+  <div id="modal">
+    <h3 data-i18n="modal_create_ver_title">Создать свою версию</h3>
+    <div class="modal-field">
+      <label data-i18n="mp_new_name">Название</label>
+      <input id="modalName" type="text" placeholder="Выживание с Fabric" data-i18n-ph="modal_name_ph" maxlength="50">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;margin-top:2px;">
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;">${t('version_mc')}</div>
+        <div><div style="font-size:11px;color:#484860;margin-bottom:4px;" data-i18n="releases_label">Релизы</div><div id="mddReleaseWrap" class="dd-wrap"></div></div>
+        <div><div style="font-size:11px;color:#484860;margin-bottom:4px;" data-i18n="snapshots_label">Снапшоты</div><div id="mddSnapshotWrap" class="dd-wrap"></div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;" data-i18n="loader_label">Модлоадер</div>
+        <div class="loader-grid" id="modalLoaderGrid">
+          <button class="loader-btn active" data-loader="vanilla"  onclick="modalSelectLoader('vanilla')">Vanilla</button>
+          <button class="loader-btn"        data-loader="fabric"   onclick="modalSelectLoader('fabric')">Fabric</button>
+          <button class="loader-btn"        data-loader="quilt"    onclick="modalSelectLoader('quilt')">Quilt</button>
+          <button class="loader-btn"        data-loader="forge"    onclick="modalSelectLoader('forge')">Forge</button>
+          <button class="loader-btn"        data-loader="neoforge" onclick="modalSelectLoader('neoforge')">NeoForge</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;" id="modalLoaderVerCol">
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;">${t('loader_ver')}</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#353548;font-size:13px;">${t('loader_unavail')}</div>
+      </div>
+    </div>
+    <div class="modal-btns" style="margin-top:16px;">
+      <button id="modalCancel" onclick="closeModal()" data-i18n="cancel">Отмена</button>
+      <button id="modalConfirm" onclick="confirmCreateVersion()" data-i18n="mp_new_confirm">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add mod to modpack overlay -->
+<div id="mpAddModOverlay">
+  <div id="mpAddModPanel">
+    <div id="mpAddModHeader">
+      <div id="mpAddModTitle" data-i18n="mp_add_title">Добавить моды</div>
+      <button id="mpAddModClose" onclick="closeMpAddMod()">✕</button>
+    </div>
+    <div id="mpAddModBody">
+      <div id="mpAddModTabs"></div>
+      <div id="mpAddModSearchRow">
+        <input class="mods-search-input" id="mpAddModInput" placeholder="${t('search_mods')}">
+        <div class="mods-source-toggle" id="mpAddModSourceToggle" style="display:none">
+          <div class="src-btn both active" data-src="both" data-i18n="src_all">Все</div>
+          <div class="src-btn mr" data-src="modrinth">Modrinth</div>
+          <div class="src-btn cf" data-src="curseforge">CurseForge</div>
+        </div>
+        <button class="mods-search-btn" id="mpAddModSearchBtn" data-i18n="search_btn">Найти</button>
+      </div>
+      <div id="mpAddModGrid"><div class="mods-loading" data-i18n="enter_query">Введите запрос для поиска</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mod detail overlay -->
+<div id="imgLightbox" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);flex-direction:column;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeLightbox()">
+  <img id="imgLightboxImg" src="" style="max-width:90vw;max-height:85vh;border-radius:10px;object-fit:contain;box-shadow:0 8px 60px rgba(0,0,0,.8);">
+  <div id="imgLightboxCaption" style="color:#aaa;font-size:13px;margin-top:10px;"></div>
+  <div style="position:absolute;top:16px;right:20px;color:#666;font-size:22px;cursor:pointer;" onclick="closeLightbox()">✕</div>
+</div>
+<div id="modDetailOverlay">
+  <div id="modDetailPanel">
+    <div id="modDetailHeader">
+      <img id="modDetailIcon" src="" alt="">
+      <div id="modDetailTitleWrap">
+        <div id="modDetailTitle">—</div>
+        <div id="modDetailAuthor"></div>
+      </div>
+      <div id="modDetailMeta">
+        <span class="md-stat" id="modDetailDownloads"></span>
+        <span class="md-stat" id="modDetailUpdated"></span>
+      </div>
+      <button id="modDetailClose" onclick="closeModDetail()">✕</button>
+    </div>
+    <div id="modDetailTabs">
+      <div class="md-tab active" data-mdtab="desc" data-i18n="description">Описание</div>
+      <div class="md-tab" data-mdtab="versions" data-i18n="versions">Версии</div>
+      <div class="md-tab" data-mdtab="gallery" data-i18n="gallery">Галерея</div>
+      <div class="md-tab" data-mdtab="changelog" data-i18n="changelog">Ченджлог</div>
+    </div>
+    <div id="modDetailBody"><div class="mods-loading" data-i18n="loading">Загрузка...</div></div>
+  </div>
+</div>
+
+<!-- Modpack picker overlay -->
+<div id="mpPickerOverlay">
+  <div id="mpPickerPanel">
+    <div id="mpPickerHeader">
+      <div id="mpPickerTitle" data-i18n="add_to_mp">Добавить в модпак</div>
+      <button id="mpPickerClose" onclick="closeMpPicker()">✕</button>
+    </div>
+    <div id="mpPickerList"><div id="mpPickerEmpty"></div></div>
+  </div>
+</div>
+
+<!-- Modpack create modal -->
+<div id="mpModalOverlay">
+  <div id="mpModal">
+    <h3 id="mpModalTitleEl" data-i18n="mp_new_title">Новый модпак</h3>
+    <div class="mp-field">
+      <label data-i18n="mp_new_name">Название</label>
+      <input id="mpModalName" type="text" placeholder="Зомби модпак" data-i18n-ph="mp_new_name_ph" maxlength="60">
+    </div>
+    <div class="mp-field">
+      <label data-i18n="mp_new_version">Версия Minecraft</label>
+      <div id="mpVersionWrap" class="dd-wrap"></div>
+      <div id="mpSnapNote" style="display:none;font-size:10.5px;color:#7a5a2a;margin-top:5px;padding:5px 8px;background:#1a1408;border:1px solid #3a2a0a;border-radius:6px;" data-i18n="mp_snap_note">* модлоадеры недоступны в снапшотах</div>
+    </div>
+    <div class="mp-field" id="mpLoaderField" style="display:none">
+      <label data-i18n="mp_new_loader">Модлоадер</label>
+      <div class="loader-grid" id="mpLoaderGrid">
+        <button class="loader-btn active" data-loader="vanilla"  onclick="mpSelectLoader('vanilla')">Vanilla</button>
+        <button class="loader-btn"        data-loader="fabric"   onclick="mpSelectLoader('fabric')">Fabric</button>
+        <button class="loader-btn"        data-loader="quilt"    onclick="mpSelectLoader('quilt')">Quilt</button>
+        <button class="loader-btn"        data-loader="forge"    onclick="mpSelectLoader('forge')">Forge</button>
+        <button class="loader-btn"        data-loader="neoforge" onclick="mpSelectLoader('neoforge')">NeoForge</button>
+      </div>
+    </div>
+    <div id="mpLoaderVerField" style="display:none">
+      <div class="mp-field" style="margin-bottom:0">
+        <label data-i18n="mp_new_loader_ver">Версия загрузчика</label>
+        <div class="loaderv-inner">
+          <div class="best-row on" id="mpBestRow" onclick="mpToggleBest()">
+            <input type="checkbox" id="mpBestCheck" checked onclick="event.stopPropagation()">
+            <span data-i18n="mp_best_ver">Использовать лучшую версию</span>
+          </div>
+          <div id="mpLoaderVerWrap" class="dd-wrap"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mp-modal-btns" style="margin-top:16px;">
+      <button id="mpModalCancel" data-i18n="cancel" onclick="closeMpModal()">Отмена</button>
+      <button id="mpModalConfirm" data-i18n="mp_new_confirm" onclick="confirmCreateModpack()">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stop confirm -->
+<div id="stopConfirmOverlay">
+  <div id="stopConfirmBox">
+    <div class="sc-icon" id="scIcon">⚠️</div>
+    <div class="sc-title" id="scTitle"></div>
+    <div class="sc-desc"  id="scDesc"></div>
+    <div class="sc-btns">
+      <button id="scCancelBtn"  onclick="closeStopConfirm()" id="scCancelBtn"></button>
+      <button id="scConfirmBtn" onclick="confirmStop()"></button>
+    </div>
+  </div>
+</div>
+
+<script src="renderer.js"></script>
+
+<div id="appFooter">
+  <div id="appFooterLine"></div>
+  <div id="appFooterText">MidLauncher ещё в разработке. Для репорта багов перейдите в наш <a id="discordLink" href="#" onclick="window.electronAPI?.openExternal('https://discord.gg/UUD5QfvWEz');return false;">дискорд</a></div>
+</div>
+
+<!-- Java Detail Modal -->
+<div id="javaDetailModal">
+  <div class="java-modal-box">
+    <div class="java-modal-title" data-i18n="settings_java">Java / JRE</div>
+    <div class="java-type-grid" id="jdTypeGrid"></div>
+
+    <div class="java-custom-section" id="jdCustomSection">
+      <div>
+        <div class="java-args-label" id="jd-label-path">Путь к Java</div>
+        <div style="display:flex;gap:8px">
+          <input class="settings-input wide" id="jdJavaPath" placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe" oninput="settingsDraft.javaPath=this.value">
+          <button class="settings-btn" onclick="pickJavaPath()" data-i18n="settings_browse">Обзор...</button>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:#6666a0">
+        <input type="checkbox" id="jdShowArgs" onchange="toggleJdArgs(this)" style="accent-color:#004dff">
+        <span id="jd-label-adv" data-i18n="java_show_advanced">Открыть дополнительные параметры</span>
+      </label>
+      <div class="java-args-section" id="jdArgsSection">
+        <div>
+          <div class="java-args-label" id="jd-label-jargs">Аргументы Java</div>
+          <input class="settings-input wide" id="jdJavaArgs" placeholder="-XX:+UseG1GC -Xss1M" oninput="settingsDraft.javaArgs=this.value">
+        </div>
+        <div>
+          <div class="java-args-label" id="jd-label-optargs">Оптимизированные аргументы</div>
+          <select class="settings-input wide" id="jdOptArgs" onchange="settingsDraft.javaOptArgs=this.value">
+            <option value="default" id="gc_opt_default"></option>
+            <option value="off" id="gc_opt_off"></option>
+            <option value="cms" id="gc_opt_cms"></option>
+            <option value="g1gc" id="gc_opt_g1gc"></option>
+            <option value="shenandoah" id="gc_opt_shenandoah"></option>
+            <option value="zgc" id="gc_opt_zgc"></option>
+          </select>
+        </div>
+        <div>
+          <div class="java-args-label" id="jd-label-mcargs">Аргументы Minecraft</div>
+          <input class="settings-input wide" id="jdMcArgs" placeholder="--fullscreen" oninput="settingsDraft.minecraftArgs=this.value">
+        </div>
+        <div>
+          <div class="java-args-label" id="jd-label-wrap">Команда — обёртка</div>
+          <input class="settings-input wide" id="jdWrapCmd" placeholder="" oninput="settingsDraft.javaWrapCmd=this.value">
+        </div>
+      </div>
+    </div>
+
+    <div class="java-modal-footer">
+      <button class="settings-btn" id="jd-cancel-btn" onclick="closeJavaDetail()">Отмена</button>
+      <button class="settings-btn primary" id="jd-apply-btn" onclick="saveJavaDetail()">Применить</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "my-launcher",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox"
+  },
+  "dependencies": {
+    "electron": "31.7.1",
+    "minecraft-launcher-core": "^3.16.4"
+  }
+}
