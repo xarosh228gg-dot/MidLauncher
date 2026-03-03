@@ -12,7 +12,8 @@
     "dist:win": "electron-builder --win --x64",
     "dist:linux": "electron-builder --linux --x64",
     "dist:mac": "electron-builder --mac",
-    "postinstall": "node patch-builder.js"
+    "postinstall": "node patch-builder.js",
+    "build": "electron-builder --win --x64"
   },
   "build": {
     "appId": "com.mnd.midlauncher",

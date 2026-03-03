@@ -35,6 +35,11 @@ let modalUseBest         = true;
 const menuItems  = document.querySelectorAll('.menu-item');
 const activeLine = document.getElementById('activeLine');
 
+// Tab switch token — incremented on every tab change.
+// Async load functions capture this value and bail out if it changed.
+let _tabSeq = 0;
+window._tabSeq = _tabSeq;
+
 function moveLine(item) {
   const r = item.getBoundingClientRect(), pr = item.parentElement.getBoundingClientRect();
   const w = r.width * 0.76;
@@ -45,6 +50,8 @@ menuItems.forEach(i => i.addEventListener('click', () => {
   menuItems.forEach(x => x.classList.remove('active'));
   i.classList.add('active');
   moveLine(i);
+  _tabSeq = ((_tabSeq + 1) >>> 0);   // safe uint32 increment
+  window._tabSeq = _tabSeq;
   loadTab(i.dataset.target);
 }));
 moveLine(document.querySelector('.menu-item.active'));
@@ -500,6 +507,7 @@ async function fetchVersionManifest() {
 
 // ── Launcher init ─────────────────────────────────────────────────────────────
 async function loadLauncher() {
+  const mySeq = _tabSeq;
   const content = document.getElementById('content');
   const loaderBtns = LOADERS.map(l =>
     `<button class="loader-btn${l.id==='vanilla'?' active':''}" data-loader="${l.id}" onclick="selectLoader('${l.id}')">${l.name}</button>`
@@ -559,6 +567,7 @@ async function loadLauncher() {
 
   try {
     const data = await fetchVersionManifest();
+    if (_tabSeq !== mySeq) return;  // tab changed while loading — discard
     ddRelease  = createDropdown('ddReleaseWrap',  t('select_release'),   data.releases,  v => { selectedVersion = v; selectedCustomId = null; ddSnapshot?.reset(); ddCustom?.reset(); setLoadersLocked(false); refreshLoaderVersions(); updatePlaySub(); document.getElementById('launcherSnapNote').style.display='none'; if (selectedLoader==='vanilla') { const c=document.getElementById('loaderVerCard'); if(c) c.innerHTML=`<div class="card-title">${t('loader_ver')}</div><div class="unavail">${t('loader_unavail')}</div>`; } });
     ddSnapshot = createDropdown('ddSnapshotWrap', t('select_snapshot'), data.snapshots, v => { selectedVersion = v; selectedCustomId = null; ddRelease?.reset();   ddCustom?.reset(); setLoadersLocked(true);  refreshLoaderVersions(); updatePlaySub(); document.getElementById('launcherSnapNote').style.display=''; });
     config.last ? restoreLastSession() : (selectedVersion = data.releases[0]?.value, ddRelease.setValue(data.releases[0].value, data.releases[0].label), updatePlaySub());
@@ -2224,6 +2233,7 @@ function renderModRow(mod) {
 async function modsDoSearch(append = false) {
   if (modsLoading) return;
   modsLoading = true;
+  const mySeq = _tabSeq;
   const grid = document.getElementById('modsGrid');
   if (!grid) { modsLoading = false; return; }
   if (!append) {
@@ -2241,6 +2251,7 @@ async function modsDoSearch(append = false) {
       limit: MODS_LIMIT, offset: modsOffset, gameVersion: modsFilterVersion, sort: modsSort,
       loaders: modsFilterLoaders, categories: modsFilterCategories, environment: modsFilterEnv,
     }) || { items: [], cfAvailable: false };
+    if (_tabSeq !== mySeq) { modsLoading = false; return; }  // tab changed
 
     if (modsCFAvail === null) {
       modsCFAvail = res.cfAvailable;
@@ -4030,14 +4041,17 @@ function frWizardStep(step, total, label) {
 
 // ── Main render ───────────────────────────────────────────────────
 async function loadFriends() {
+  const mySeq = _tabSeq;
   const content = document.getElementById('content');
 
   if (_friendsView === 'login' && socialLoadSession()) {
     try {
       const me = await socialAPI('socialMe', { token:_socialToken });
+      if (_tabSeq !== mySeq) return;
       _socialUser = me; _friendsView = 'main'; await socialLoadFriendList(); socialConnect();
     } catch { socialClearSession(); _friendsView = 'login'; }
   }
+  if (_tabSeq !== mySeq) return;
 
   // ── Login / Register view ──────────────────────────────────────
   if (_friendsView === 'login') {
