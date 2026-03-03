@@ -168,8 +168,12 @@ document.addEventListener('click', closeAllDropdowns);
 function appendLog(msg) {
   const el = document.getElementById('logBody');
   if (!el) return;
-  if (el.textContent === t('log_empty') || el.textContent === 'Лог пуст...') el.textContent = '';
-  el.textContent += msg + '\n';
+  if (!el.querySelector('.log-line')) el.innerHTML = '';
+  const isError = /^[⚠✗]|[Ee]rror/.test(msg);
+  const span = document.createElement('span');
+  span.className = isError ? 'log-line log-error' : 'log-line';
+  span.textContent = msg + '\n';
+  el.appendChild(span);
   el.scrollTop = el.scrollHeight;
 }
 window.closeLog  = () => { logOpen = false; document.getElementById('logOverlay').classList.remove('open'); document.getElementById('logBtn')?.classList.remove('active'); };
@@ -261,7 +265,7 @@ async function modalRefreshLoaderVer() {
 window.confirmCreateVersion = () => {
   const name = document.getElementById('modalName').value.trim();
   if (!name) { document.getElementById('modalName').style.borderColor = '#cc4444'; return; }
-  if (!modalSelectedVersion) { document.getElementById('modalName').style.borderColor = '#cc8800'; appendLog('⚠ Выбери версию MC'); return; }
+  if (!modalSelectedVersion) { document.getElementById('modalName').style.borderColor = '#cc8800'; appendLog(t('sel_mc_ver')); return; }
   document.getElementById('modalName').style.borderColor = '';
   const cv = {
     id:            Date.now(),
@@ -555,7 +559,7 @@ async function loadLauncher() {
 
   try {
     const data = await fetchVersionManifest();
-    ddRelease  = createDropdown('ddReleaseWrap',  t('select_release'),   data.releases,  v => { selectedVersion = v; selectedCustomId = null; ddSnapshot?.reset(); ddCustom?.reset(); setLoadersLocked(false); refreshLoaderVersions(); updatePlaySub(); document.getElementById('launcherSnapNote').style.display='none'; if (selectedLoader==='vanilla') { const c=document.getElementById('loaderVerCard'); if(c) c.innerHTML='<div class="card-title">Версия загрузчика</div><div class="unavail">Версии недоступны</div>'; } });
+    ddRelease  = createDropdown('ddReleaseWrap',  t('select_release'),   data.releases,  v => { selectedVersion = v; selectedCustomId = null; ddSnapshot?.reset(); ddCustom?.reset(); setLoadersLocked(false); refreshLoaderVersions(); updatePlaySub(); document.getElementById('launcherSnapNote').style.display='none'; if (selectedLoader==='vanilla') { const c=document.getElementById('loaderVerCard'); if(c) c.innerHTML=`<div class="card-title">${t('loader_ver')}</div><div class="unavail">${t('loader_unavail')}</div>`; } });
     ddSnapshot = createDropdown('ddSnapshotWrap', t('select_snapshot'), data.snapshots, v => { selectedVersion = v; selectedCustomId = null; ddRelease?.reset();   ddCustom?.reset(); setLoadersLocked(true);  refreshLoaderVersions(); updatePlaySub(); document.getElementById('launcherSnapNote').style.display=''; });
     config.last ? restoreLastSession() : (selectedVersion = data.releases[0]?.value, ddRelease.setValue(data.releases[0].value, data.releases[0].label), updatePlaySub());
   } catch(e) { appendLog(t('err_load_versions') + ': ' + e.message); }
@@ -729,7 +733,7 @@ function resetPlayBtn() {
   const sub  = lastPlayedLabel || '—';
   if (btn) { btn.disabled = false; btn.innerHTML = `<div class="play-inner" style="margin-left:40px"><span class="play-label">${t('play')}</span><span class="play-version" id="playSubText">${sub}</span></div>`; }
   document.getElementById('cancelBtn')?.classList.remove('visible');
-  if (activeMpId !== null) { mpSetLaunching(activeMpId, false); activeMpId = null; }
+  if (activeMpId !== null) { const _mpId = activeMpId; activeMpId = null; mpSetLaunching(_mpId, false); }
 }
 
 function initElectronListeners() {
@@ -754,7 +758,7 @@ function initElectronListeners() {
 
   window.electronAPI.onStatus(msg => {
     appendLog(msg);
-    if (msg === 'Игра запущена!' || msg === 'Game launched!') {
+    if (msg === t('game_started') || msg === 'Game launched!') {
       if (activeMpId !== null) { mpSetInGame(activeMpId); }
       const btn = document.getElementById('playBtn');
       if (btn) {
@@ -769,7 +773,7 @@ function initElectronListeners() {
         }, 1000);
       }
     }
-    if (msg.startsWith('Игра закрыта')) {
+    if (msg.startsWith(t('game_closed'))) {
       resetPlayBtn();
       setTimeout(() => {
         const w = document.getElementById('progressWrap');
@@ -973,7 +977,7 @@ let _pendingAddMod = null;
 async function downloadModForInstance(mod, mpName, category, mpVersion) {
   const safeInst = mpName.replace(/[\/\\:*?"<>|]/g, '_').trim();
   if (!mod.slug) {
-    appendLog('⚠ Не удалось скачать «' + (mod.title||mod.name) + '»: нет slug');
+    appendLog(t('dl_fail') + (mod.title||mod.name) + t('dl_no_slug'));
     return;
   }
   if (mod.source !== 'modrinth') {
@@ -981,23 +985,23 @@ async function downloadModForInstance(mod, mpName, category, mpVersion) {
     if (mod.url) {
       try {
         const filename = mod.url.split('/').pop().split('?')[0] || (mod.slug + '.jar');
-        appendLog('⬇ Скачиваю ' + (mod.title||mod.name) + ' → ' + safeInst + '/' + category + '/' + filename);
+        appendLog(t('dl_ing') + ' ' + (mod.title||mod.name) + ' → ' + safeInst + '/' + category + '/' + filename);
         await window.electronAPI?.downloadMod({ fileUrl: mod.url, filename, category: category || 'mod', instanceName: safeInst });
-        appendLog('✓ ' + (mod.title||mod.name) + ' скачан');
-      } catch(e) { appendLog('✗ Ошибка скачивания ' + (mod.title||mod.name) + ': ' + e.message); }
+        appendLog('✓ ' + (mod.title||mod.name) + ' ' + t('dl_done'));
+      } catch(e) { appendLog(t('dl_err') + ' ' + (mod.title||mod.name) + ': ' + e.message); }
     }
     return;
   }
-  appendLog('⬇ Получаю версии «' + (mod.title||mod.name) + '»...');
+  appendLog(t('dl_vers') + (mod.title||mod.name) + '»...');
   let versions;
   try {
     versions = await window.electronAPI?.getModVersions({ source: 'modrinth', slug: mod.slug });
   } catch(e) {
-    appendLog('✗ Ошибка getModVersions для «' + (mod.title||mod.name) + '»: ' + e.message);
+    appendLog(t('dl_ver_err') + (mod.title||mod.name) + '»: ' + e.message);
     return;
   }
   if (!versions?.length) {
-    appendLog('⚠ Нет версий для «' + (mod.title||mod.name) + '»');
+    appendLog(t('dl_no_vers') + (mod.title||mod.name) + '»');
     return;
   }
 
@@ -1009,11 +1013,11 @@ async function downloadModForInstance(mod, mpName, category, mpVersion) {
   }
   const file = best.files?.find(f => f.primary) || best.files?.[0];
   if (!file?.url) {
-    appendLog('⚠ Нет файла в версии «' + (mod.title||mod.name) + '»');
+    appendLog(t('dl_no_file') + (mod.title||mod.name) + '»');
     return;
   }
 
-  appendLog('⬇ Скачиваю ' + file.filename + ' → ' + safeInst + '/' + (category||'mod') + '/');
+  appendLog(t('dl_ing') + ' ' + file.filename + ' → ' + safeInst + '/' + (category||'mod') + '/');
   try {
     const result = await window.electronAPI?.downloadMod({
       fileUrl: file.url, filename: file.filename,
@@ -1021,12 +1025,12 @@ async function downloadModForInstance(mod, mpName, category, mpVersion) {
       instanceName: safeInst,
     });
     if (result?.success) {
-      appendLog('✓ ' + file.filename + ' скачан в ' + safeInst);
+      appendLog('✓ ' + file.filename + ' ' + t('dl_saved') + ' ' + safeInst);
     } else {
-      appendLog('✗ Ошибка скачивания ' + file.filename + (result?.error ? ': ' + result.error : ''));
+      appendLog(t('dl_err') + ' ' + file.filename + (result?.error ? ': ' + result.error : ''));
     }
   } catch(e) {
-    appendLog('✗ Ошибка скачивания ' + file.filename + ': ' + e.message);
+    appendLog(t('dl_err') + ' ' + file.filename + ': ' + e.message);
   }
 }
 
@@ -1034,7 +1038,7 @@ window.confirmCreateModpack = function() {
   const name = document.getElementById('mpModalName').value.trim();
   const inp  = document.getElementById('mpModalName');
   if (!name) { inp.style.borderColor='#cc4444'; setTimeout(()=>inp.style.borderColor='',1000); return; }
-  if (!mpModalSelVer) { mpVersionDD && document.getElementById('mpVersionWrap').querySelector('.dd-trigger')?.classList.add('has-value'); alert('Выбери версию Minecraft'); return; }
+  if (!mpModalSelVer) { mpVersionDD && document.getElementById('mpVersionWrap').querySelector('.dd-trigger')?.classList.add('has-value'); alert(t('sel_mc_ver2')); return; }
   inp.style.borderColor='';
   const loaderVer = (!mpModalUseBest && mpLoaderVerDD) ? mpLoaderVerDD.getValue() : null;
   const mp = { id: Date.now(), name, version: mpModalSelVer, loader: mpModalSelLoader, loaderVersion: loaderVer, versionType: mpModalIsSnap ? 'snapshot' : 'release', mods: [] };
@@ -1125,7 +1129,7 @@ function renderModpacksArea() {
         <div class="mp-card-meta">
           <div class="mp-card-name-row">
             <div class="mp-card-name" data-nameel="${mp.id}">${mp.name}</div>
-            <button class="mp-rename-btn" data-rename="${mp.id}" title="Переименовать"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+            <button class="mp-rename-btn" data-rename="${mp.id}" title="${t('rename')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
           </div>
           <div class="mp-card-sub">${mp.version} · ${LOADER_MAP[mp.loader]||mp.loader} · ${mp.mods.length} ${t('mods_count')}</div>
         </div>
@@ -1161,7 +1165,7 @@ function renderModpacksArea() {
       modListEl.appendChild(secHead);
       items.forEach(({ mod, i }) => {
         const el = document.createElement('div'); el.className = 'mp-mod-item';
-        el.innerHTML = `<span class="mp-mod-name">${mod.name}</span><span class="mp-mod-source">${mod.source||''}</span><button class="mp-mod-del" data-delmod="${mp.id}" data-idx="${i}" title="${t('delete_btn')}">✕</button>`;
+        el.innerHTML = `<span class="mp-mod-name">${escHtml(mod.name)}</span><span class="mp-mod-source">${escHtml(mod.source||'')}</span><button class="mp-mod-del" data-delmod="${mp.id}" data-idx="${i}" title="${t('delete_btn')}">✕</button>`;
         modListEl.appendChild(el);
       });
     });
@@ -1555,54 +1559,54 @@ const LOADER_ICONS = { fabric:'🧵', forge:'⚒', neoforge:'🔩', quilt:'🪡'
 // ── Category translations ─────────────────────────────────────────────────────
 const CAT_RU = {
   // gameplay
-  'adventure':          'Приключения',
-  'combat':             'Бой',
-  'decoration':         'Декорации',
-  'economy':            'Экономика',
-  'equipment':          'Снаряжение',
-  'food':               'Еда',
-  'game-mechanics':     'Игровые механики',
-  'library':            'Библиотека',
-  'magic':              'Магия',
-  'management':         'Управление',
-  'minigame':           'Мини-игра',
-  'mobs':               'Мобы',
-  'optimization':       'Оптимизация',
-  'social':             'Социальное',
-  'storage':            'Хранилище',
-  'technology':         'Технологии',
-  'transportation':     'Транспорт',
-  'utility':            'Утилиты',
-  'worldgen':           'Генерация мира',
-  'biomes':             'Биомы',
-  'structures':         'Структуры',
-  'dimensions':         'Измерения',
-  'cursed':             'Проклятое',
-  'quests':             'Квесты',
-  'building':           'Строительство',
-  'misc':               'Разное',
+  'adventure':          t('cat_adventure'),
+  'combat':             t('cat_combat'),
+  'decoration':         t('cat_decoration'),
+  'economy':            t('cat_economy'),
+  'equipment':          t('cat_equipment'),
+  'food':               t('cat_food'),
+  'game-mechanics':     t('cat_game_mechanics'),
+  'library':            t('cat_library'),
+  'magic':              t('cat_magic'),
+  'management':         t('cat_management'),
+  'minigame':           t('cat_minigame'),
+  'mobs':               t('cat_mobs'),
+  'optimization':       t('cat_optimization'),
+  'social':             t('cat_social'),
+  'storage':            t('cat_storage'),
+  'technology':         t('cat_technology'),
+  'transportation':     t('cat_transport'),
+  'utility':            t('cat_utility'),
+  'worldgen':           t('cat_worldgen'),
+  'biomes':             t('cat_biome'),
+  'structures':         t('cat_structure'),
+  'dimensions':         t('cat_dimension'),
+  'cursed':             t('cat_cursed'),
+  'quests':             t('cat_quests'),
+  'building':           t('cat_building'),
+  'misc':               t('cat_misc'),
   // shaders / resource
-  'atmosphere':         'Атмосфера',
-  'bloom':              'Свечение',
-  'cartoon':            'Мультяшный',
-  'colored-lighting':   'Цветное освещение',
-  'fantasy':            'Фэнтези',
-  'foliage':            'Растительность',
-  'high':               'Высокое качество',
-  'low':                'Низкое качество',
-  'medium':             'Среднее качество',
-  'path-tracing':       'Трассировка пути',
+  'atmosphere':         t('sh_atmosphere'),
+  'bloom':              t('sh_bloom'),
+  'cartoon':            t('sh_cartoon'),
+  'colored-lighting':   t('sh_colored_light'),
+  'fantasy':            t('sh_fantasy'),
+  'foliage':            t('sh_foliage'),
+  'high':               t('sh_high'),
+  'low':                t('sh_low'),
+  'medium':             t('sh_medium'),
+  'path-tracing':       t('sh_path_tracing'),
   'pbr':                'PBR',
-  'realistic':          'Реализм',
-  'reflections':        'Отражения',
-  'semi-realistic':     'Полуреализм',
-  'shadows':            'Тени',
-  'vanilla-like':       'Ванильный стиль',
+  'realistic':          t('sh_realism'),
+  'reflections':        t('sh_reflections'),
+  'semi-realistic':     t('sh_semi_realism'),
+  'shadows':            t('sh_shadows'),
+  'vanilla-like':       t('sh_vanilla'),
   // modpacks
-  'hardcore':           'Хардкор',
-  'lightweight':        'Лёгкий',
-  'multiplayer':        'Мультиплеер',
-  'singleplayer':       'Одиночная',
+  'hardcore':           t('sh_hardcore'),
+  'lightweight':        t('sh_potato'),
+  'multiplayer':        t('mp_multiplayer'),
+  'singleplayer':       t('mp_singleplayer'),
   // extra
   'nope':               'Nope',
 };
@@ -1642,12 +1646,12 @@ function renderEnvSection(clientSide, serverSide) {
   if (!clientSide && !serverSide) return '';
   const cs = clientSide||'unknown', ss = serverSide||'unknown';
   let envTag = '', envCls = '', icon = SVG_MONITOR;
-  if (cs === 'required' && ss === 'required')         { envTag = 'Клиент и сервер';         envCls = 'both';   icon = SVG_BOTH; }
-  else if (cs === 'required' && ss === 'unsupported') { envTag = 'Только клиент';            envCls = 'client'; icon = SVG_MONITOR; }
-  else if (cs === 'unsupported' && ss === 'required') { envTag = 'Только сервер';            envCls = 'server'; icon = SVG_SERVER; }
-  else if (cs === 'required')                          { envTag = 'Клиент (+ опц. сервер)'; envCls = 'client'; icon = SVG_MONITOR; }
-  else if (ss === 'required')                          { envTag = 'Сервер (+ опц. клиент)'; envCls = 'server'; icon = SVG_SERVER; }
-  else if (cs !== 'unsupported' || ss !== 'unsupported') { envTag = 'Клиент и сервер (опц.)'; envCls = 'both'; icon = SVG_BOTH; }
+  if (cs === 'required' && ss === 'required')         { envTag = t('env_both');         envCls = 'both';   icon = SVG_BOTH; }
+  else if (cs === 'required' && ss === 'unsupported') { envTag = t('env_client_only');            envCls = 'client'; icon = SVG_MONITOR; }
+  else if (cs === 'unsupported' && ss === 'required') { envTag = t('env_server_only');            envCls = 'server'; icon = SVG_SERVER; }
+  else if (cs === 'required')                          { envTag = t('env_client_optional'); envCls = 'client'; icon = SVG_MONITOR; }
+  else if (ss === 'required')                          { envTag = t('env_server_optional'); envCls = 'server'; icon = SVG_SERVER; }
+  else if (cs !== 'unsupported' || ss !== 'unsupported') { envTag = t('env_both_optional'); envCls = 'both'; icon = SVG_BOTH; }
   if (!envTag) return '';
   return `<div class="md-section-title">${t('filter_env')}</div>
     <div class="md-env-row"><span class="md-env-tag ${envCls}">${icon}${envTag}</span></div>`;
@@ -1677,14 +1681,14 @@ function renderDetailBody() {
     body.innerHTML = `
       <div class="md-action-row">
         ${isModpackType
-          ? '<button class="md-btn-primary" id="mdBtnAddToMp">↓ Скачать модпак</button>'
-          : '<button class="md-btn-primary" id="mdBtnAddToMp">+ В модпак</button>'}
+          ? `<button class="md-btn-primary" id="mdBtnAddToMp">${t('dl_modpack')}</button>`
+          : `<button class="md-btn-primary" id="mdBtnAddToMp">${t('add_modpack')}</button>`}
         <button class="md-btn-secondary" id="mdBtnExternal">Открыть на Modrinth ↗</button>
       </div>
-      ${loaderHTML ? `<div class="md-section-title">Платформы</div><div>${loaderHTML}</div>` : ''}
+      ${loaderHTML ? `<div class="md-section-title">${t('platforms')}</div><div>${loaderHTML}</div>` : ''}
       ${envHtml}
-      ${catTags ? `<div class="md-section-title">Категории</div><div>${catTags}</div>` : ''}
-      ${verSample ? `<div class="md-section-title">Версии Minecraft</div><div>${verSample}${moreVer}</div>` : ''}
+      ${catTags ? `<div class="md-section-title">${t('categories')}</div><div>${catTags}</div>` : ''}
+      ${verSample ? `<div class="md-section-title">${t('mc_versions2')}</div><div>${verSample}${moreVer}</div>` : ''}
       <div class="md-section-title">${t('description')}</div>
       <div class="md-desc">${d.description || '—'}</div>`;
     body.querySelector('#mdBtnAddToMp')?.addEventListener('click', () => {
@@ -1727,7 +1731,7 @@ function renderDetailBody() {
       });
       return;
     }
-    if (!d._versions.length) { body.innerHTML = '<div class="mods-empty">Нет доступных версий</div>'; return; }
+    if (!d._versions.length) { body.innerHTML = `<div class="mods-empty">${t('no_versions')}</div>`; return; }
 
     const sortedVers = [...d._versions].sort((a, b) => semverDesc(a.name, b.name));
 
@@ -1785,7 +1789,7 @@ function renderDetailBody() {
           });
           const addBtn = document.createElement('button');
           addBtn.className = 'mod-dl-btn'; addBtn.style.fontSize='11px'; addBtn.style.padding='4px 8px';
-          addBtn.textContent = '+ Модпак';
+          addBtn.textContent = t('add_modpack2');
           addBtn.addEventListener('click', () => {
             const modWithVer = { ...d, _specificVersion: v };
             openMpPicker(modWithVer);
@@ -1798,7 +1802,7 @@ function renderDetailBody() {
     });
 
   } else if (_detailTab === 'gallery') {
-    if (!d.gallery?.length) { body.innerHTML = '<div class="mods-empty">Галерея пуста</div>'; return; }
+    if (!d.gallery?.length) { body.innerHTML = `<div class="mods-empty">${t('gallery_empty')}</div>`; return; }
     body.innerHTML = '<div class="md-gallery"></div>';
     const gal = body.querySelector('.md-gallery');
     d.gallery.forEach(img => {
@@ -1815,9 +1819,9 @@ function renderDetailBody() {
       });
       return;
     }
-    if (!d._versions.length) { body.innerHTML = '<div class="mods-empty">Нет данных</div>'; return; }
+    if (!d._versions.length) { body.innerHTML = `<div class="mods-empty">${t('no_data')}</div>`; return; }
     const entries = d._versions.filter(v => v.changelog?.trim()).slice(0, 30);
-    if (!entries.length) { body.innerHTML = '<div class="mods-empty">Ченджлог недоступен</div>'; return; }
+    if (!entries.length) { body.innerHTML = `<div class="mods-empty">${t('changelog_na')}</div>`; return; }
     body.innerHTML = '<div class="md-changelog"></div>';
     const cl = body.querySelector('.md-changelog');
     entries.forEach(v => {
@@ -1854,7 +1858,7 @@ async function openModDetail(mod) {
   document.getElementById('modDetailAuthor').textContent = mod.author ? 'by ' + mod.author : '';
   document.getElementById('modDetailDownloads').textContent = fmtDownloads(mod.downloads);
   const upd = mod.updated ? new Date(mod.updated).toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'}) : '';
-  document.getElementById('modDetailUpdated').textContent = upd ? 'Обновлён ' + upd : '';
+  document.getElementById('modDetailUpdated').textContent = upd ? t('updated') + ' ' + upd : '';
   document.getElementById('modDetailBody').innerHTML = `<div class="mods-loading">${t('loading')}</div>`;
   document.getElementById('modDetailOverlay').classList.add('open');
   if (mod.source === 'modrinth') {
@@ -1883,7 +1887,7 @@ function checkModCompatForMp(mod, mp) {
     verOk,
     loaderOk,
     verMsg:    !verOk    ? `версии: ${(mod.gameVersions||[]).filter(v=>/^\d/.test(v)).slice(0,5).join(', ')||'—'}` : '',
-    loaderMsg: !loaderOk ? `загрузчики: ${(mod.loaders||[]).join(', ')||'—'}` : '',
+    loaderMsg: !loaderOk ? (mod.loaders||[]).join(', ')||'—' : '',
   };
 }
 
@@ -1896,7 +1900,7 @@ function openMpPicker(mod) {
   _pickerMod = mod;
   // Close mod detail if open so it doesn't linger behind
   closeModDetail();
-  document.getElementById('mpPickerTitle').textContent = `Добавить «${mod.title}» в модпак`;
+  document.getElementById('mpPickerTitle').textContent = t('add_mod_to_mp').replace('{name}', mod.title);
   const list = document.getElementById('mpPickerList');
   list.innerHTML = '';
   if (!modpacks.length) {
@@ -1923,10 +1927,10 @@ function openMpPicker(mod) {
       <div style="flex:1;min-width:0;">
         <div class="mp-picker-name">${mp.name}</div>
         <div class="mp-picker-sub">${mp.version} · ${LOADER_MAP[mp.loader]||mp.loader} · ${mp.mods.length} мод${mp.mods.length===1?'':'ов'}</div>
-        ${loaderIncompat ? `<div class="mp-picker-warn" style="color:#cc4444">✗ Несовместимый загрузчик — поддерживается: ${compat.loaderMsg.replace('загрузчики: ','')}</div>` : ''}
+        ${loaderIncompat ? `<div class="mp-picker-warn" style="color:#cc4444">${t('incompat_loader')} ${compat.loaderMsg}</div>` : ''}
       </div>
       <button class="mp-picker-add${alreadyIn?' added':''}${loaderIncompat?' disabled':''}"
-        ${loaderIncompat ? 'disabled title="Несовместимый модлоадер"' : ''}
+        ${loaderIncompat ? `disabled title="${t('incompat_loader2')}"` : ''}
       >${alreadyIn?t('added'):loaderIncompat?t('incompatible_loader'):t('add_btn')}</button>`;
     const addBtn = item.querySelector('.mp-picker-add');
     if (!alreadyIn && !loaderIncompat) {
@@ -1970,11 +1974,16 @@ function doMpPlay(id) {
   const mp = modpacks.find(m => m.id === id);
   if (!mp) return;
   if (!window.electronAPI) { appendLog('⚠ ' + t('npm_start_warn')); if (!logOpen) toggleLog(); return; }
-  if (gameRunning) { appendLog('⚠ Игра уже запущена'); return; }
+  if (gameRunning) { appendLog(t('game_running')); return; }
   activeMpId = id;
   selectedVersion = mp.version;
   selectedLoader  = mp.loader;
   mpSetLaunching(id, true);
+  // Switch to launcher tab so progress bar UI (progressWrap/Bar/Label) exists in DOM
+  const launcherTab = document.querySelector('.menu-item[data-target="launcher"]');
+  if (launcherTab && !launcherTab.classList.contains('active')) {
+    launcherTab.click();
+  }
   launchGame({ version: mp.version, loader: mp.loader, loaderVersion: mp.loaderVersion||null, versionType: mp.versionType||'release', instanceName: mp.name });
 }
 
@@ -1983,23 +1992,40 @@ function mpSetLaunching(id, launching) {
   const delBtn  = document.querySelector(`[data-del="${id}"]`);
   if (launching) {
     if (playBtn) {
-      playBtn.innerHTML = '<span class="mp-spin"></span> Запуск...';
+      playBtn.innerHTML = '<span class="mp-spin"></span> ' + t('loading');
       playBtn.disabled = false;
       playBtn.dataset.launching = '1';
-      playBtn.onclick = () => {
+      // Replace with a fresh clone to wipe ALL previous event listeners
+      const fresh = playBtn.cloneNode(true);
+      fresh.innerHTML = '<span class="mp-spin"></span> ' + t('loading');
+      fresh.dataset.launching = '1';
+      fresh.onclick = () => {
         window.electronAPI?.cancelLaunch();
-        playBtn.innerHTML = `▶ ${t('play')}`; playBtn.disabled = false;
-        delete playBtn.dataset.launching;
-        playBtn.onclick = null;
-        playBtn.addEventListener('click', () => doMpPlay(id), { once: true });
+        // resetPlayBtn will be called by onCancelled — don't reset manually here
+        // Just update the button immediately for responsiveness
+        fresh.innerHTML = `▶ ${t('mp_play')}`;
+        fresh.disabled = false;
+        delete fresh.dataset.launching;
+        fresh.onclick = null;
+        fresh.addEventListener('click', () => doMpPlay(id));
       };
+      playBtn.parentNode.replaceChild(fresh, playBtn);
     }
-    if (delBtn) { delBtn.disabled = true; delBtn.style.opacity = '0.3'; delBtn.title = 'Нельзя удалить — модпак запущен'; }
+    if (delBtn) { delBtn.disabled = true; delBtn.style.opacity = '0.3'; delBtn.title = t('cant_delete_mp'); }
   } else {
-    if (playBtn) {
-      playBtn.innerHTML = `▶ ${t('play')}`;
-      playBtn.disabled = false;
-      delete playBtn.dataset.launching;
+    // Find button again — it may have been replaced by cloneNode above
+    const btn = document.querySelector(`[data-play="${id}"]`);
+    if (btn) {
+      btn.innerHTML = `▶ ${t('mp_play')}`;
+      btn.disabled = false;
+      delete btn.dataset.launching;
+      // Wipe onclick and re-attach clean handler
+      btn.onclick = null;
+      const fresh = btn.cloneNode(true);
+      fresh.innerHTML = `▶ ${t('mp_play')}`;
+      fresh.onclick = null;
+      fresh.addEventListener('click', () => doMpPlay(id));
+      btn.parentNode.replaceChild(fresh, btn);
     }
     if (delBtn) { delBtn.disabled = false; delBtn.style.opacity = ''; delBtn.title = ''; }
   }
@@ -2008,8 +2034,8 @@ function mpSetLaunching(id, launching) {
 function mpSetInGame(id) {
   const playBtn = document.querySelector(`[data-play="${id}"]`);
   const delBtn  = document.querySelector(`[data-del="${id}"]`);
-  if (playBtn) { playBtn.innerHTML = '● В игре'; playBtn.disabled = true; }
-  if (delBtn)  { delBtn.disabled = true; delBtn.style.opacity = '0.3'; delBtn.title = 'Нельзя удалить — модпак запущен'; }
+  if (playBtn) { playBtn.innerHTML = t('game_in'); playBtn.disabled = true; }
+  if (delBtn)  { delBtn.disabled = true; delBtn.style.opacity = '0.3'; delBtn.title = t('cant_delete_mp'); }
 }
 
 window.electronAPI?.onModDownloadProgress(({ filename, pct }) => {
@@ -2019,23 +2045,23 @@ window.electronAPI?.onModDownloadProgress(({ filename, pct }) => {
 window.electronAPI?.onModDownloadDone(({ filename, success }) => {
   const btn = document.querySelector(`[data-dlfile="${filename}"]`);
   if (!btn) return;
-  if (success) { btn.textContent = '✓ Скачан'; btn.className = 'mod-dl-btn done'; btn.disabled = true; }
-  else         { btn.textContent = 'Ошибка';   btn.className = 'mod-dl-btn error'; btn.disabled = false; }
+  if (success) { btn.textContent = t('downloaded'); btn.className = 'mod-dl-btn done'; btn.disabled = true; }
+  else         { btn.textContent = t('err_short');   btn.className = 'mod-dl-btn error'; btn.disabled = false; }
 });
 
 function fmtDownloads(n) {
   if (!n) return '';
-  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M скач.';
-  if (n >= 1e3) return Math.round(n/1e3) + 'K скач.';
-  return n + ' скач.';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + t('dl_m');
+  if (n >= 1e3) return Math.round(n/1e3) + t('dl_k');
+  return n + ' ' + t('dl_n');
 }
 
 async function mdVerDownloadModpack(mod, ver, btn) {
-  btn.textContent = 'Импорт...'; btn.className = 'mod-dl-btn downloading'; btn.disabled = true;
+  btn.textContent = t('importing'); btn.className = 'mod-dl-btn downloading'; btn.disabled = true;
   try {
     const gameVer = (ver.gameVersions||[]).filter(v => /^\d+\.\d+(\.\d+)?$/.test(v))[0] || '';
     const loaderHint = (ver.loaders||[]).find(l => ['fabric','forge','quilt','neoforge'].includes(l)) || 'vanilla';
-    btn.textContent = 'Загружаю моды...';
+    btn.textContent = t('loading_mods');
     const fetched = mod.source === 'modrinth'
       ? await window.electronAPI?.getModpackMods({ source: 'modrinth', slug: mod.slug, versionId: ver.id }) || []
       : [];
@@ -2058,7 +2084,7 @@ async function mdVerDownloadModpack(mod, ver, btn) {
     // Download mods/resourcepacks/shaders into their correct versioned folders
     // versions/<mpName>/mods | resourcepacks | shaderpacks | datapacks
     if (fetched.length) {
-      btn.textContent = `Скачиваю 0/${fetched.length}...`;
+      btn.textContent = `${t('dl_ing')} 0/${fetched.length}...`;
       let done = 0;
       for (const m of fetched) {
         if (m.fileUrl) {
@@ -2068,21 +2094,21 @@ async function mdVerDownloadModpack(mod, ver, btn) {
             await window.electronAPI?.downloadMod({ fileUrl: m.fileUrl, filename: m.filename, category: cat, instanceName: mpName });
           } catch {}
           done++;
-          btn.textContent = `Скачиваю ${done}/${fetched.length}...`;
+          btn.textContent = `${t('dl_ing')} ${done}/${fetched.length}...`;
         }
       }
     }
-    btn.textContent = `✓ Добавлен (${fetched.length} модов)`;
+    btn.textContent = t('added_mods').replace('{n}', fetched.length);
     btn.className = 'mod-dl-btn done'; btn.disabled = true;
   } catch(e) {
-    btn.textContent = 'Ошибка'; btn.className = 'mod-dl-btn error'; btn.disabled = false;
+    btn.textContent = t('err_short'); btn.className = 'mod-dl-btn error'; btn.disabled = false;
     setTimeout(() => { btn.textContent = t('modpack_add_mine'); btn.className = 'mod-dl-btn'; btn.disabled = false; }, 2000);
   }
 }
 
 async function openModpackVersionPicker(mod, btn) {
   // Show version picker overlay
-  btn.textContent = 'Загрузка...'; btn.disabled = true;
+  btn.textContent = t('loading_short'); btn.disabled = true;
   let versions = [];
   try {
     versions = await window.electronAPI?.getModVersions({ source: mod.source, slug: mod.slug }) || [];
@@ -2157,7 +2183,7 @@ async function modDownload(mod, btn) {
       btn.disabled = true;
     }
   } catch {
-    btn.textContent = 'Ошибка';
+    btn.textContent = t('err_short');
     btn.className = 'mod-dl-btn error';
     btn.disabled = false;
     setTimeout(() => { btn.textContent = t('download'); btn.className = 'mod-dl-btn'; btn.disabled = false; }, 2000);
@@ -2307,7 +2333,7 @@ function buildSidebar() {
         return `<div class="sf-item${active?' active':''}" data-sfid="${id}" data-sfval="${it.id}"><input type="checkbox"${active?' checked':''}>${lbl}</div>`;
       }
     }).join('');
-    const clearBtn = hasActive ? `<button class="sf-clear" data-sfclear="${id}">✕ Сбросить</button>` : '';
+    const clearBtn = hasActive ? `<button class="sf-clear" data-sfclear="${id}">${t('reset_btn')}</button>` : '';
     const innerRows = scrollable
       ? `<div class="sf-body-scroll">${rows}</div>${clearBtn}`
       : `${rows}${clearBtn}`;
@@ -2679,7 +2705,1535 @@ function loadFiles() {
 
   navigateTo(null);
 }
-function loadTab(tab) { ({ launcher:loadLauncher, mods:loadMods, files:loadFiles, settings:loadSettings }[tab] || loadLauncher)(); }
+// ══════════════════════════════════════════════════════════════════
+// FRIENDS SYSTEM
+// ══════════════════════════════════════════════════════════════════
+let _socialToken    = null;
+let _socialUser     = null;
+let _socialWS       = null;
+let _socialFriends  = [];
+let _socialPending  = [];
+let _socialOnline   = new Map();
+let _chatTarget     = null;
+let _chatMessages   = [];
+let _friendsView    = 'login'; // login | setup_avatar | main
+
+
+// ── Session persist ───────────────────────────────────────────────
+function socialSaveSession(token, user) {
+  _socialToken = token; _socialUser = user;
+  try { localStorage.setItem('social_token', token); localStorage.setItem('social_user', JSON.stringify(user)); } catch {}
+}
+function socialLoadSession() {
+  try {
+    const t = localStorage.getItem('social_token');
+    const u = localStorage.getItem('social_user');
+    if (t && u) { _socialToken = t; _socialUser = JSON.parse(u); return true; }
+  } catch {}
+  return false;
+}
+function socialClearSession() {
+  _socialToken = null; _socialUser = null;
+  try { localStorage.removeItem('social_token'); localStorage.removeItem('social_user'); } catch {}
+}
+
+// ── Avatar helpers ────────────────────────────────────────────────
+function frGetAvatar() { try { return localStorage.getItem('social_avatar') || null; } catch { return null; } }
+function frSaveAvatar(d) { try { localStorage.setItem('social_avatar', d); } catch {} }
+function frClearAvatar() { try { localStorage.removeItem('social_avatar'); } catch {} }
+
+async function frBuildHeadFromSkin(skinDataUrl) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+      const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 8, 8, 8, 8, 0, 0, 64, 64);
+      ctx.drawImage(img, 40, 8, 8, 8, 0, 0, 64, 64);
+      res(cv.toDataURL('image/png'));
+    };
+    img.onerror = rej;
+    img.src = skinDataUrl;
+  });
+}
+
+async function frAutoSetMCAvatar() {
+  if (frGetAvatar()) return;
+  try {
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    if (!acc || acc.type === 'local') return;
+    const skin = await window.electronAPI?.fetchSkin({ username: acc.username, type: acc.type });
+    if (!skin) return;
+    const head = await frBuildHeadFromSkin(skin);
+    frSaveAvatar(head);
+    frRefreshMeAvatar(head);
+  } catch {}
+}
+
+function frRefreshMeAvatar(dataUrl) {
+  const el = document.getElementById('frMeAvatar');
+  if (!el) return;
+  const initial = (_socialUser?.displayName || _socialUser?.username || '?')[0].toUpperCase();
+  el.innerHTML = dataUrl
+    ? `<img src="${dataUrl}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
+    : initial;
+}
+
+window.frClickAvatar = function() {
+  document.querySelectorAll('.fr-avatar-menu').forEach(m => m.remove());
+  const av = document.getElementById('frMeAvatar');
+  if (!av) return;
+  const menu = document.createElement('div');
+  menu.className = 'fr-avatar-menu';
+  menu.innerHTML = `
+    <button onclick="frAvatarFromMC()">Скин Minecraft</button>
+    <button onclick="frAvatarUpload()">Загрузить фото</button>
+    <button onclick="frAvatarReset()" style="color:#e05858;">${t('soc_reset_avatar')}</button>`;
+  av.parentElement.style.position = 'relative';
+  av.after(menu);
+  const close = (e) => { if (!menu.contains(e.target) && e.target !== av) { menu.remove(); document.removeEventListener('click', close); }};
+  setTimeout(() => document.addEventListener('click', close), 10);
+};
+
+window.frAvatarFromMC = async function() {
+  document.querySelectorAll('.fr-avatar-menu').forEach(m => m.remove());
+  try {
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    if (!acc) { alert(t('soc_no_mc')); return; }
+    const skin = await window.electronAPI?.fetchSkin({ username: acc.username, type: acc.type });
+    if (!skin) { alert(t('soc_skin_fail')); return; }
+    const head = await frBuildHeadFromSkin(skin);
+    frSaveAvatar(head); frRefreshMeAvatar(head);
+  } catch(e) { alert(t('soc_err') + ' ' + e.message); }
+};
+
+window.frAvatarUpload = function() {
+  document.querySelectorAll('.fr-avatar-menu').forEach(m => m.remove());
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = () => {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => { frSaveAvatar(e.target.result); frRefreshMeAvatar(e.target.result); };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+};
+
+window.frAvatarReset = function() {
+  document.querySelectorAll('.fr-avatar-menu').forEach(m => m.remove());
+  frClearAvatar(); frRefreshMeAvatar(null);
+};
+
+// ── Deep link auto-login ──────────────────────────────────────────
+if (window.electronAPI?.onDeeplinkVerify) {
+  window.electronAPI.onDeeplinkVerify(async (token) => {
+    try {
+      _socialToken = token;
+      const me = await socialAPI('socialMe', { token });
+      socialSaveSession(token, me);
+      if (!me.username) { _friendsView = 'setup_username'; }
+      else { _socialUser = me; _friendsView = 'main'; await socialLoadFriendList(); socialConnect(); }
+      document.querySelectorAll('.menu-item').forEach(el => el.classList.toggle('active', el.dataset.target === 'friends'));
+      loadFriends();
+    } catch(e) { console.error('[deeplink]', e.message); }
+  });
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────
+const SOCIAL_WS = 'wss://weqeecharm8y5g-production.up.railway.app';
+
+function socialConnect() {
+  if (!_socialToken) return;
+  if (_socialWS && _socialWS.readyState === WebSocket.OPEN) return;
+  try { _socialWS = new WebSocket(SOCIAL_WS); } catch { return; }
+  _socialWS.onopen  = () => { _socialWS.send(JSON.stringify({ type:'auth', token:_socialToken })); };
+  _socialWS.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch { return; } socialHandleWS(msg); };
+  _socialWS.onclose = () => { setTimeout(() => { if (_socialToken) socialConnect(); }, 5000); };
+  _socialWS.onerror = () => {};
+}
+
+function socialSendWS(obj) {
+  if (_socialWS && _socialWS.readyState === WebSocket.OPEN) _socialWS.send(JSON.stringify(obj));
+}
+
+function socialHandleWS(msg) {
+  if (msg.type === 'auth_ok') {
+    msg.friends?.forEach(f => { if (f.online) _socialOnline.set(f.id, f.presence || {}); });
+    socialRefreshFriendsList(); return;
+  }
+  if (msg.type === 'friend_online')   { _socialOnline.set(msg.userId, {}); updateFriendCard(msg.userId); return; }
+  if (msg.type === 'friend_offline')  { _socialOnline.delete(msg.userId); updateFriendCard(msg.userId); return; }
+  if (msg.type === 'presence')        { _socialOnline.set(msg.userId, msg.data||{}); updateFriendCard(msg.userId); return; }
+  if (msg.type === 'friend_request')  { socialLoadFriendList().then(socialRefreshFriendsList); return; }
+  if (msg.type === 'friend_accepted') { socialLoadFriendList().then(socialRefreshFriendsList); return; }
+  if (msg.type === 'friend_removed')  { socialLoadFriendList().then(socialRefreshFriendsList); return; }
+  if (msg.type === 'message') {
+    if (_chatTarget?.id === msg.fromId || _chatTarget?.id === msg.toId) {
+      _chatMessages.push(msg); renderChatMessages();
+    } else {
+      const badge = document.querySelector(`[data-friend-id="${msg.fromId}"] .fr-unread`);
+      if (badge) badge.style.display = '';
+    }
+  }
+}
+
+const api = window.electronAPI;
+async function socialAPI(method, ...args) {
+  const _api = window.electronAPI;
+  if (!_api || !_api[method]) throw new Error('API unavailable — запусти через npm start');
+  const res = await _api[method](...args);
+  // Status 0 = network/connection error (returned by main process catch)
+  if (res && res.status === 0 && res.data?.error) throw new Error(res.data.error);
+  if (res && res.status && res.status >= 400) { let errMsg; if (typeof res.data === "object") { errMsg = res.data?.error || res.data?.message || JSON.stringify(res.data); } else { errMsg = String(res.data || "").slice(0, 200) || ("Server error " + res.status); } console.error("[socialAPI] ERROR", method, res.status, res.data); throw new Error(errMsg || "Server error " + res.status); }
+  return res.data ?? res;
+}
+
+async function socialLoadFriendList() {
+  try {
+    const res = await socialAPI('socialFriends', { token: _socialToken });
+    _socialFriends = res.accepted || [];
+    _socialPending = res.pending  || [];
+  } catch(e) { console.error('socialLoadFriendList', e.message); }
+}
+
+// ── Friends list rendering ────────────────────────────────────────
+function socialRefreshFriendsList() {
+  const container = document.getElementById('frFriendsList');
+  if (!container) return;
+  const pendingCount = _socialPending.length;
+  const pendingTab = document.getElementById('frPendingTab');
+  if (pendingTab) pendingTab.innerHTML = `${t('soc_pending')}${pendingCount > 0 ? ` <span class="fr-badge">${pendingCount}</span>` : ''}`;
+  const tab = document.getElementById('frFriendsTabActive');
+  const activeTab = tab?.dataset.tab || 'friends';
+  if (activeTab === 'friends') renderFriendsList(container);
+  else if (activeTab === 'pending') renderPendingList(container);
+  else if (activeTab === 'account') renderAccountTab(container);
+}
+
+function renderFriendsList(container) {
+  if (!_socialFriends.length) {
+    container.innerHTML = `<div class="fr-empty">${t('soc_no_friends')}<br><span style="font-size:11px;color:var(--text4)">${t('soc_add_hint')}</span></div>`;
+    return;
+  }
+  container.innerHTML = '';
+  _socialFriends.forEach(f => {
+    const online = _socialOnline.has(f.id);
+    const presence = _socialOnline.get(f.id) || {};
+    const card = document.createElement('div');
+    card.className = 'fr-friend-card';
+    card.dataset.friendId = f.id;
+    card.innerHTML = `
+      ${presence.mods?.length
+        ? `<div class="fr-mods-toggle" onclick="frToggleMods(this)">
+             <span>📦 ${presence.mods.length} модов</span><span class="fr-toggle-arrow">▶</span>
+           </div>
+           <div class="fr-mods-list" style="display:none">${presence.mods.map(m=>`<div class="fr-mod-item">${m}</div>`).join('')}</div>`
+        : ''}
+      <div class="fr-avatar">${(f.displayName||f.username||'?')[0].toUpperCase()}</div>
+      <div class="fr-info">
+        <div class="fr-name">${f.displayName||f.username}<span class="fr-username">@${f.username}</span></div>
+        <div class="fr-status ${online?'online':'offline'}">${online ? (presence.server ? '🎮 '+presence.server : t('soc_online')) : t('soc_offline')}</div>
+      </div>
+      <div class="fr-actions">
+        ${online && presence.server
+          ? `<button class="fr-btn fr-join-btn" onclick="frJoin('${f.id}')" title="${t('soc_connect')}">Join</button>` : ''}
+        <button class="fr-btn fr-chat-btn" onclick="frOpenChat('${f.id}','${f.username}','${(f.displayName||f.username).replace(/'/g,"\\'")}')">💬</button>
+        <button class="fr-btn fr-remove-btn" onclick="frRemove('${f.id}')" title="${t('soc_remove_friend')}">✕</button>
+        <button class="fr-btn fr-block-btn" onclick="frBlock('${f.id}','${f.username}')" title="${t('soc_block')}">⊘</button>
+        <button class="fr-btn fr-report-btn" onclick="frReport('${f.id}','${f.username}')" title="${t('soc_report')}">!</button>
+        <span class="fr-unread" style="display:none">●</span>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function renderPendingList(container) {
+  if (!_socialPending.length) { container.innerHTML = `<div class="fr-empty">${t('soc_no_pending')}</div>`; return; }
+  container.innerHTML = '';
+  _socialPending.forEach(f => {
+    const card = document.createElement('div');
+    card.className = 'fr-friend-card';
+    card.innerHTML = `
+      <div class="fr-avatar">${(f.displayName||f.username||'?')[0].toUpperCase()}</div>
+      <div class="fr-info">
+        <div class="fr-name">${f.displayName||f.username}<span class="fr-username">@${f.username}</span></div>
+        <div class="fr-status">Хочет добавить тебя в друзья</div>
+      </div>
+      <div class="fr-actions">
+        <button class="fr-btn fr-accept-btn" onclick="frAccept('${f.id}')">✓ Принять</button>
+        <button class="fr-btn fr-remove-btn" onclick="frRemove('${f.id}')">✕</button>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function updateFriendCard(userId) {
+  const card = document.querySelector(`[data-friend-id="${userId}"]`);
+  if (!card) { socialRefreshFriendsList(); return; }
+  const online  = _socialOnline.has(userId);
+  const presence = _socialOnline.get(userId) || {};
+  const statusEl  = card.querySelector('.fr-status');
+  const actionsEl = card.querySelector('.fr-actions');
+  if (statusEl) {
+    statusEl.className = 'fr-status ' + (online ? 'online' : 'offline');
+    statusEl.textContent = online ? (presence.server ? '🎮 '+presence.server : t('soc_online')) : t('soc_offline');
+  }
+  const modsToggle = card.querySelector('.fr-mods-toggle');
+  const modsList   = card.querySelector('.fr-mods-list');
+  if (presence.mods?.length) {
+    if (!modsToggle) {
+      const info = card.querySelector('.fr-info');
+      const mt = document.createElement('div'); mt.className = 'fr-mods-toggle'; mt.onclick = () => frToggleMods(mt);
+      const ml = document.createElement('div'); ml.className = 'fr-mods-list'; ml.style.display = 'none';
+      mt.innerHTML = `<span>📦 ${presence.mods.length} модов</span><span class="fr-toggle-arrow">▶</span>`;
+      ml.innerHTML = presence.mods.map(m=>`<div class="fr-mod-item">${m}</div>`).join('');
+      info?.after(ml); info?.after(mt);
+    } else {
+      if (modsList) modsList.innerHTML = presence.mods.map(m=>`<div class="fr-mod-item">${m}</div>`).join('');
+    }
+  }
+  if (actionsEl && online !== undefined) {
+    const old = actionsEl.querySelector('.fr-join-btn');
+    if (online && presence.server) {
+      if (!old) {
+        const btn = document.createElement('button');
+        btn.className = 'fr-btn fr-join-btn'; btn.title = t('soc_connect');
+        btn.textContent = '⚡ Join'; btn.onclick = () => frJoin(userId);
+        actionsEl.prepend(btn);
+      }
+    } else { if (old) old.remove(); }
+  }
+}
+
+window.frToggleMods = function(el) {
+  const arr  = el.querySelector('.fr-toggle-arrow');
+  const list = el.nextElementSibling;
+  if (!list) return;
+  const open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : '';
+  if (arr) arr.textContent = open ? '▶' : '▼';
+};
+
+window.frSwitchTab = function(tab) {
+  document.querySelectorAll('.fr-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const el = document.getElementById('frFriendsTabActive');
+  if (el) el.dataset.tab = tab;
+  const container = document.getElementById('frFriendsList');
+  if (!container) return;
+  if (tab === 'friends') renderFriendsList(container);
+  else if (tab === 'pending') renderPendingList(container);
+  else if (tab === 'account') renderAccountTab(container);
+};
+
+function renderAccountTab(container) {
+  const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+  const linked = _socialUser?.linkedAccounts || [];
+  const isAdmin = _socialUser?.isAdmin === true;
+  const linkedMs    = linked.find(l => l.type === 'microsoft');
+  const linkedElyby = linked.find(l => l.type === 'elyby');
+  const canLinkMs    = acc && acc.type === 'microsoft' && !linkedMs;
+  const canLinkElyby = acc && acc.type === 'elyby' && !linkedElyby;
+
+  container.innerHTML = `
+    <div style="padding:12px;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Смена ника</div>
+        <input id="frChangeUsernameInput" class="fr-input" type="text" placeholder="${t('soc_new_nick')}" maxlength="64"
+          value="${_socialUser?.username || ''}"
+          onkeydown="if(event.key==='Enter')frChangeUsername()">
+        <div class="fr-err" id="frChangeUsernameErr" style="margin-top:4px;font-size:11px;"></div>
+        <button id="frChangeUsernameBtn" class="fr-submit" style="margin-top:8px;" onclick="frChangeUsername()">Сменить ник</button>
+        <div style="font-size:10px;color:var(--text4);margin-top:4px;">Можно менять раз в 2 часа</div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Отображаемое имя</div>
+        <input id="frChangeDisplayNameInput" class="fr-input" type="text" placeholder="${t('soc_display_name')}" maxlength="32"
+          value="${_socialUser?.displayName || ''}"
+          onkeydown="if(event.key==='Enter')frChangeDisplayName()">
+        <div class="fr-err" id="frChangeDisplayNameErr" style="margin-top:4px;font-size:11px;"></div>
+        <button id="frChangeDisplayNameBtn" class="fr-submit" style="margin-top:8px;" onclick="frChangeDisplayName()">Изменить имя</button>
+      </div>
+
+      <div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Привязанные аккаунты</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);padding:8px 10px;border-radius:8px;border:1px solid var(--border2);">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--text);">Microsoft</div>
+              <div style="font-size:10px;color:var(--text4);">${linkedMs ? linkedMs.external_username || t('soc_linked') : t('soc_not_linked')}</div>
+            </div>
+            ${linkedMs
+              ? `<button onclick="frUnlinkAccount('microsoft')" style="font-size:11px;background:none;border:1px solid #cc4444;color:#cc4444;padding:4px 10px;border-radius:6px;cursor:pointer;">${t('soc_unlink')}</button>`
+              : canLinkMs
+                ? `<button onclick="frLinkAccount('microsoft')" style="font-size:11px;background:var(--accent);border:none;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;">${t('soc_link')}</button>`
+                : `<span style="font-size:10px;color:var(--text4);">${t('soc_link_ms')}</span>`
+            }
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);padding:8px 10px;border-radius:8px;border:1px solid var(--border2);">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--text);">Ely.by</div>
+              <div style="font-size:10px;color:var(--text4);">${linkedElyby ? linkedElyby.external_username || t('soc_linked') : t('soc_not_linked')}</div>
+            </div>
+            ${linkedElyby
+              ? `<button onclick="frUnlinkAccount('elyby')" style="font-size:11px;background:none;border:1px solid #cc4444;color:#cc4444;padding:4px 10px;border-radius:6px;cursor:pointer;">${t('soc_unlink')}</button>`
+              : canLinkElyby
+                ? `<button onclick="frLinkAccount('elyby')" style="font-size:11px;background:var(--accent);border:none;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;">${t('soc_link')}</button>`
+                : `<span style="font-size:10px;color:var(--text4);">${t('soc_link_ely')}</span>`
+            }
+          </div>
+        </div>
+        <div class="fr-err" id="frLinkErr" style="margin-top:6px;font-size:11px;"></div>
+        <div id="frLinkSuccess" style="margin-top:6px;font-size:11px;color:#44cc88;"></div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Пароль</div>
+        <input id="frNewPassInput" class="fr-input" type="password" placeholder="${t('soc_new_pass')}" autocomplete="new-password">
+        <input id="frNewPass2Input" class="fr-input" type="password" placeholder="${t('soc_repeat_pass')}" style="margin-top:6px;" autocomplete="new-password">
+        <div class="fr-err" id="frChangePassErr" style="margin-top:4px;font-size:11px;"></div>
+        <button id="frChangePassBtn" class="fr-submit" style="margin-top:8px;" onclick="frChangePassword()">Установить / сменить пароль</button>
+      </div>
+
+      ${isAdmin ? `
+      <div style="margin-top:4px;padding:12px;background:linear-gradient(135deg,#1a0a2e,#0d1a3a);border:1px solid #6644aa;border-radius:12px;">
+        <div style="font-size:11px;color:#aa88ff;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">${t('adm_panel')}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button onclick="frAdminPanel()" style="width:100%;padding:9px;border:none;background:linear-gradient(135deg,#6644aa,#4422ee);color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:.15s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">Управление пользователями</button>
+          <button onclick="frAdminStats()" style="width:100%;padding:9px;border:none;background:rgba(102,68,170,.2);border:1px solid #6644aa44;color:#aa88ff;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;" onmouseover="this.style.background='rgba(102,68,170,.35)'" onmouseout="this.style.background='rgba(102,68,170,.2)'">Статистика сервера</button>
+        </div>
+      </div>` : ''}
+
+      <div style="margin-top:8px;padding-top:14px;border-top:1px solid var(--border);">
+        <button onclick="frDeleteAccount()" style="width:100%;padding:10px;border:none;background:#cc2222;color:#fff;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;" onmouseover="this.style.background='#aa1a1a'" onmouseout="this.style.background='#cc2222'">Удалить аккаунт</button>
+      </div>
+    </div>`;
+}
+
+window.frJoin = function(userId) {
+  const presence = _socialOnline.get(userId);
+  if (presence?.server) { appendLog(t('soc_connecting') + ' ' + presence.server); }
+};
+
+window.frOpenChat = async function(id, username, displayName) {
+  _chatTarget   = { id, username, displayName };
+  _chatMessages = [];
+  const main  = document.getElementById('frMain');
+  const sidebar = main?.querySelector('.fr-sidebar');
+  const chat  = document.getElementById('frChat');
+  if (!chat) return;
+  const badge = document.querySelector(`[data-friend-id="${id}"] .fr-unread`);
+  if (badge) badge.style.display = 'none';
+  document.getElementById('frChatName').textContent    = displayName || username;
+  document.getElementById('frChatSubname').textContent = '@' + username;
+  const av = document.getElementById('frChatAvatar');
+  if (av) av.textContent = (displayName||username||'?')[0].toUpperCase();
+  if (sidebar) sidebar.style.display = 'none';
+  chat.style.display = 'flex';
+  try {
+    const msgs = await socialAPI('socialMessages', { token: _socialToken, friendId: id });
+    _chatMessages = Array.isArray(msgs) ? msgs : [];
+  } catch {}
+  renderChatMessages();
+};
+
+window.frCloseChat = function() {
+  _chatTarget = null;
+  const main    = document.getElementById('frMain');
+  const sidebar = main?.querySelector('.fr-sidebar');
+  const chat    = document.getElementById('frChat');
+  if (sidebar) sidebar.style.display = '';
+  if (chat) chat.style.display = 'none';
+};
+
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderChatMessages() {
+  const container = document.getElementById('frChatMessages');
+  if (!container) return;
+  container.innerHTML = '';
+  _chatMessages.forEach(m => {
+    const mine = m.fromId === _socialUser?.id;
+    const d = document.createElement('div');
+    d.className = 'fr-msg ' + (mine ? 'fr-msg-mine' : 'fr-msg-theirs');
+    const date = new Date((m.ts||0)*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    d.innerHTML = `<span class="fr-msg-text">${escHtml(m.content)}</span><span class="fr-msg-time">${date}</span>`;
+    container.appendChild(d);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+window.frSendMessage = async function() {
+  const input = document.getElementById('frChatInput');
+  const text = input?.value.trim();
+  if (!text || !_chatTarget) return;
+  input.value = '';
+  socialSendWS({ type:'message', toId:_chatTarget.id, content:text });
+};
+
+window.frAddFriend = async function() {
+  const input = document.getElementById('frAddInput');
+  const val   = input?.value.trim().replace(/^@/, '');
+  const err   = document.getElementById('frAddError');
+  if (!val) return;
+  if (err) err.textContent = '';
+  try {
+    await socialAPI('socialAddFriend', { token:_socialToken, username:val });
+    if (input) input.value = '';
+    await socialLoadFriendList();
+    socialRefreshFriendsList();
+  } catch(e) { if (err) err.textContent = e.message; }
+};
+
+// ── Block ────────────────────────────────────────────────────────────────────
+window.frBlock = function(userId, username) {
+  frConfirmModal({
+    icon: null,
+    title: t('soc_block_user') + username + '?',
+    subtitle: 'Пользователь будет удалён из друзей и заблокирован. Вы не сможете получать сообщения от него.',
+    confirmLabel: t('soc_block'),
+    confirmClass: 'danger',
+    requirePassword: false,
+    onConfirm: async () => {
+      await socialAPI('socialBlock', { token: _socialToken, userId });
+      _socialFriends = _socialFriends.filter(f => f.id !== userId);
+      socialRefreshFriendsList();
+    }
+  });
+};
+
+// ── Report ───────────────────────────────────────────────────────────────────
+window.frReport = function(userId, username) {
+  // Показываем модалку с полем причины
+  document.getElementById('frConfirmModalOverlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'frConfirmModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:200000;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#13131a;border:1px solid #2a2a3a;border-radius:20px;padding:28px 32px;width:340px;display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 80px rgba(0,0,0,.8);animation:frBoxIn .22s cubic-bezier(.34,1.56,.64,1);';
+  box.innerHTML = `
+    <div style="font-size:16px;font-weight:800;color:#e8e8f0;">Пожаловаться на @${username}</div>
+    <select id="frReportReason" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:9px 12px;font-size:13px;outline:none;">
+      <option value="spam">Спам / флуд</option>
+      <option value="insult">Оскорбления / харассмент</option>
+      <option value="cheat">Читерство в игре</option>
+      <option value="other">Другое</option>
+    </select>
+    <textarea id="frReportText" placeholder="${t('soc_report_desc')}" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:9px 12px;font-size:13px;outline:none;resize:vertical;min-height:80px;font-family:inherit;"></textarea>
+    <div id="frReportErr" style="font-size:12px;color:#cc4444;min-height:14px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button id="frReportCancelBtn" style="flex:1;padding:11px;border:1px solid var(--border2);border-radius:9px;background:var(--bg3);color:var(--text2);font-weight:600;font-size:13px;cursor:pointer;">Отмена</button>
+      <button id="frReportSendBtn" style="flex:1;padding:11px;border:none;border-radius:9px;background:#cc6622;color:#fff;font-weight:700;font-size:13px;cursor:pointer;">Отправить</button>
+    </div>`;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('frReportCancelBtn').onclick = () => overlay.remove();
+  document.getElementById('frReportSendBtn').onclick = async () => {
+    const reason = document.getElementById('frReportReason').value;
+    const text   = document.getElementById('frReportText').value.trim();
+    const errEl  = document.getElementById('frReportErr');
+    const btn    = document.getElementById('frReportSendBtn');
+    btn.disabled = true; btn.textContent = t('soc_sending');
+    try {
+      await socialAPI('socialReport', { token: _socialToken, userId, reason, text });
+      overlay.remove();
+      // Показать уведомление
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:300000;background:#1a2a1a;border:1px solid #44cc88;border-radius:12px;padding:12px 18px;color:#44cc88;font-size:13px;font-weight:600;animation:frFadeIn .2s ease;';
+      toast.textContent = t('soc_report_sent');
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch(e) {
+      errEl.textContent = e.message;
+      btn.disabled = false; btn.textContent = t('soc_send');
+    }
+  };
+};
+
+window.frAccept = async function(userId) {
+  try { await socialAPI('socialAccept', { token:_socialToken, userId }); await socialLoadFriendList(); socialRefreshFriendsList(); }
+  catch(e) { console.error(e.message); }
+};
+
+window.frRemove = async function(userId) {
+  try { await socialAPI('socialRemove', { token:_socialToken, userId }); await socialLoadFriendList(); socialRefreshFriendsList(); }
+  catch(e) { console.error(e.message); }
+};
+
+// ── Auth handlers ─────────────────────────────────────────────────
+window.frLogin = async function() {
+  const username = document.getElementById('frLoginUsername')?.value.trim();
+  const pass     = document.getElementById('frLoginPass')?.value;
+  const err      = document.getElementById('frLoginErr');
+  const btn      = document.getElementById('frLoginBtn');
+  if (!username || !pass) { if (err) err.textContent = t('soc_fill_fields'); return; }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await socialAPI('socialLogin', { username, password:pass });
+    socialSaveSession(res.token, res.user);
+    _friendsView = 'main';
+    await socialLoadFriendList(); socialConnect(); loadFriends();
+  } catch(e) {
+    if (err) err.textContent = e.message;
+  } finally { if (btn) btn.disabled = false; }
+};
+
+window.frLoginOAuth = function(type) {
+  frShowAccountPicker(type, async (acc) => {
+    const err = document.getElementById('frLoginErr');
+    // Find oauth login button and show loading
+    const btns = document.querySelectorAll('.fr-submit');
+    let oauthBtn = null;
+    btns.forEach(b => { if (b.textContent.includes(type === 'elyby' ? 'Ely.by' : 'Microsoft') && b.textContent.includes(t('soc_login'))) oauthBtn = b; });
+    if (oauthBtn) { oauthBtn.disabled = true; oauthBtn.textContent = t('soc_wait'); }
+    try {
+      if (!acc.uuid) {
+        if (err) err.textContent = 'UUID не найден — перевойди в Minecraft аккаунт';
+        if (oauthBtn) { oauthBtn.disabled = false; oauthBtn.textContent = t('soc_login_via') + ' ' + (type === 'elyby' ? 'Ely.by' : 'Microsoft'); }
+        return;
+      }
+      const res = await socialAPI('socialOAuthLogin', { type, externalId: acc.uuid, externalUsername: acc.username });
+      socialSaveSession(res.token, res.user);
+      _friendsView = 'main';
+      await socialLoadFriendList(); socialConnect(); loadFriends();
+    } catch(e) {
+      if (err) err.textContent = e.message;
+      if (oauthBtn) { oauthBtn.disabled = false; oauthBtn.textContent = t('soc_login_via') + ' ' + (type === 'elyby' ? 'Ely.by' : 'Microsoft'); }
+    }
+  });
+};
+
+// Shows an overlay with accounts of the given type and a "Select" button, then calls callback(acc)
+function frShowAccountPicker(type, onSelect) {
+  const accs = (typeof acAllAccounts !== 'undefined' ? acAllAccounts : []).filter(a => a.type === type);
+  if (accs.length === 1) { onSelect(accs[0]); return; }
+  if (accs.length === 0) {
+    const err = document.getElementById('frRegErr') || document.getElementById('frLoginErr');
+    if (err) { err.style.color='#cc4444'; err.textContent = t('soc_no_accounts') + ' ' + (type === 'elyby' ? 'Ely.by' : 'Microsoft') + t('soc_login_mc'); }
+    return;
+  }
+
+  document.getElementById('frConfirmModalOverlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'frConfirmModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:200000;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:frOverlayIn .18s ease;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#13131a;border:1px solid #2a2a3a;border-radius:20px;padding:28px 32px;width:340px;display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 80px rgba(0,0,0,.8);animation:frBoxIn .22s cubic-bezier(.34,1.56,.64,1);';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:16px;font-weight:800;color:#e8e8f0;text-align:center;';
+  title.textContent = t('soc_choose_acc') + ' ' + (type === 'elyby' ? 'Ely.by' : 'Microsoft');
+  box.appendChild(title);
+
+  accs.forEach(acc => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;padding:10px 14px;gap:10px;';
+    row.innerHTML = `<div><div style="font-size:14px;font-weight:600;color:#d0d0e8;">${escHtml(acc.username)}</div><div style="font-size:11px;color:#555570;">${type === 'elyby' ? 'Ely.by' : 'Microsoft'}</div></div>`;
+    const btn = document.createElement('button');
+    btn.textContent = t('soc_select');
+    btn.className = 'fr-submit';
+    btn.style.cssText = 'width:auto;padding:7px 16px;font-size:12px;flex-shrink:0;';
+    btn.onclick = () => { overlay.remove(); onSelect(acc); };
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = t('soc_cancel');
+  cancelBtn.style.cssText = 'background:none;border:none;color:#555570;font-size:12px;cursor:pointer;text-align:center;padding:4px;';
+  cancelBtn.onclick = () => overlay.remove();
+  box.appendChild(cancelBtn);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  if (!document.getElementById('frConfirmModalStyles')) {
+    const s = document.createElement('style');
+    s.id = 'frConfirmModalStyles';
+    s.textContent = '@keyframes frOverlayIn{from{opacity:0}to{opacity:1}}@keyframes frBoxIn{from{opacity:0;transform:scale(.88) translateY(16px)}to{opacity:1;transform:none}}';
+    document.head.appendChild(s);
+  }
+}
+
+window.frRegisterOAuth = function(type) {
+  frShowAccountPicker(type, async (acc) => {
+    const err = document.getElementById('frRegErr');
+    // Find the oauth button that was clicked and show loading
+    const btns = document.querySelectorAll('.fr-submit');
+    let oauthBtn = null;
+    btns.forEach(b => { if (b.textContent.includes(type === 'elyby' ? 'Ely.by' : 'Microsoft') && b.textContent.includes(t('soc_reg_short'))) oauthBtn = b; });
+    if (oauthBtn) { oauthBtn.disabled = true; oauthBtn.textContent = t('soc_wait'); }
+    if (err) { err.style.color = '#cc4444'; err.textContent = ''; }
+    if (!acc.uuid) {
+      if (err) err.textContent = 'UUID не найден — перевойди в Minecraft аккаунт';
+      if (oauthBtn) { oauthBtn.disabled = false; oauthBtn.textContent = t('soc_reg_via') + ' ' + (type === 'elyby' ? 'Ely.by' : 'Microsoft'); }
+      return;
+    }
+    try {
+      // Try login first (account might already exist)
+      try {
+        const loginRes = await socialAPI('socialOAuthLogin', { type, externalId: acc.uuid, externalUsername: acc.username });
+        socialSaveSession(loginRes.token, loginRes.user);
+        _friendsView = 'main';
+        await socialLoadFriendList(); socialConnect(); loadFriends();
+        return;
+      } catch { /* not registered yet, proceed to create */ }
+
+      const baseUsername = (acc.username || 'user').replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24);
+      const username = baseUsername.length >= 3 ? baseUsername : baseUsername + '_mc';
+      const res = await socialAPI('socialRegister', { username, displayName: acc.username, password: uuidv4Simple() });
+      await socialAPI('socialLink', { token: res.token, type, externalId: acc.uuid, externalUsername: acc.username }).catch(() => {});
+      socialSaveSession(res.token, res.user);
+      _friendsView = 'setup_avatar';
+      loadFriends();
+    } catch(e) {
+      if (err) err.textContent = e.message;
+      if (oauthBtn) { oauthBtn.disabled = false; oauthBtn.textContent = t('soc_reg_via') + ' ' + (type === 'elyby' ? 'Ely.by' : 'Microsoft'); }
+    }
+  });
+};
+
+function uuidv4Simple() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+window.frRegister = async function() {
+  const username = document.getElementById('frRegUsername')?.value.trim();
+  const displayName = document.getElementById('frRegDisplayName')?.value.trim() || '';
+  const pass     = document.getElementById('frRegPass')?.value;
+  const pass2    = document.getElementById('frRegPass2')?.value;
+  const err      = document.getElementById('frRegErr');
+  const btn      = document.getElementById('frRegBtn');
+  if (err) { err.style.color = '#cc4444'; err.textContent = ''; }
+  if (!username || !pass) { if (err) err.textContent = t('soc_fill_fields'); return; }
+  if (username.length < 1 || username.length > 64) { if (err) err.textContent = t('soc_nick_len'); return; }
+  if (pass.length < 6) { if (err) err.textContent = t('soc_pass_min'); return; }
+  if (pass !== pass2)  { if (err) err.textContent = t('soc_pass_mismatch'); return; }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await socialAPI('socialRegister', { username, displayName: displayName || username, password:pass });
+    socialSaveSession(res.token, res.user);
+    // Сразу привязываем текущий MC аккаунт если он не локальный
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    if (acc && acc.type !== 'local' && acc.uuid) {
+      await socialAPI('socialLink', { token: res.token, type: acc.type, externalId: acc.uuid, externalUsername: acc.username }).catch(() => {});
+    }
+    _friendsView = 'setup_avatar';
+    loadFriends();
+  } catch(e) {
+    if (err) { err.style.color = '#cc4444'; err.textContent = e.message; err.scrollIntoView({ behavior:'smooth', block:'nearest' }); }
+  } finally { if (btn) btn.disabled = false; }
+};
+
+window.frChangeUsername = async function() {
+  const uname = document.getElementById('frChangeUsernameInput')?.value.trim();
+  const err   = document.getElementById('frChangeUsernameErr');
+  const btn   = document.getElementById('frChangeUsernameBtn');
+  if (!uname) { if (err) err.textContent = t('soc_enter_nick'); return; }
+  if (uname.length > 64) { if (err) err.textContent = t('soc_nick_long'); return; }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await socialAPI('socialChangeUsername', { token:_socialToken, username:uname });
+    if (!res || !res.user) throw new Error(t('soc_server_err'));
+    socialSaveSession(_socialToken, res.user);
+    _socialUser = res.user;
+    if (err) { err.style.color = '#44cc88'; err.textContent = t('soc_nick_changed') + ' ' + res.user.username; }
+  } catch(e) {
+    if (err) { err.style.color = '#cc4444'; err.textContent = e.message; }
+  } finally { if (btn) btn.disabled = false; }
+};
+
+window.frChangeDisplayName = async function() {
+  const dname = document.getElementById('frChangeDisplayNameInput')?.value.trim();
+  const err   = document.getElementById('frChangeDisplayNameErr');
+  const btn   = document.getElementById('frChangeDisplayNameBtn');
+  if (!dname) { if (err) { err.style.color='#cc4444'; err.textContent = t('soc_enter_dname'); } return; }
+  if (dname.length > 32) { if (err) { err.style.color='#cc4444'; err.textContent = t('soc_dname_long'); } return; }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await socialAPI('socialChangeDisplayName', { token:_socialToken, displayName:dname });
+    if (!res || !res.user) throw new Error(t('soc_server_err2'));
+    socialSaveSession(_socialToken, res.user);
+    _socialUser = res.user;
+    if (err) { err.style.color = '#44cc88'; err.textContent = t('soc_dname_changed') + ' ' + res.user.displayName; }
+  } catch(e) {
+    if (err) { err.style.color = '#cc4444'; err.textContent = e.message; }
+  } finally { if (btn) btn.disabled = false; }
+};
+
+window.frChangePassword = async function() {
+  const pass  = document.getElementById('frNewPassInput')?.value;
+  const pass2 = document.getElementById('frNewPass2Input')?.value;
+  const err   = document.getElementById('frChangePassErr');
+  const btn   = document.getElementById('frChangePassBtn');
+  if (err) { err.style.color = '#cc4444'; err.textContent = ''; }
+  if (!pass) { if (err) err.textContent = t('soc_enter_pass'); return; }
+  if (pass.length < 6) { if (err) err.textContent = t('soc_pass_min'); return; }
+  if (pass !== pass2) { if (err) err.textContent = t('soc_pass_mismatch'); return; }
+  if (btn) btn.disabled = true;
+  try {
+    await socialAPI('socialChangePassword', { token: _socialToken, password: pass });
+    _socialUser._hasPassword = true;
+    if (err) { err.style.color = '#44cc88'; err.textContent = t('soc_pass_set'); }
+    if (document.getElementById('frNewPassInput')) document.getElementById('frNewPassInput').value = '';
+    if (document.getElementById('frNewPass2Input')) document.getElementById('frNewPass2Input').value = '';
+  } catch(e) {
+    if (err) { err.style.color = '#cc4444'; err.textContent = e.message; }
+  } finally { if (btn) btn.disabled = false; }
+};
+
+window.frLinkAccount = async function(type) {
+  const err = document.getElementById('frLinkErr');
+  const ok  = document.getElementById('frLinkSuccess');
+  if (err) err.textContent = '';
+  if (ok)  ok.textContent  = '';
+  try {
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    if (!acc || !acc.uuid) { if (err) { err.style.color='#cc4444'; err.textContent=t('soc_no_active'); } return; }
+    if (acc.type !== type) { if (err) { err.style.color='#cc4444'; err.textContent=`${t('soc_no_active')} (${type === 'microsoft' ? 'Microsoft' : 'Ely.by'})`; } return; }
+    const res = await socialAPI('socialLink', { token:_socialToken, type, externalId:acc.uuid, externalUsername:acc.username });
+    _socialUser = { ..._socialUser, linkedAccounts: res.linkedAccounts };
+    socialSaveSession(_socialToken, _socialUser);
+    // Остаёмся на вкладке аккаунта — перерисовываем только её
+    const container = document.getElementById('frFriendsList');
+    if (container) renderAccountTab(container);
+    if (ok) { ok.textContent = `${type === 'microsoft' ? 'Microsoft' : 'Ely.by'} ${t('soc_acc_linked')}`; }
+  } catch(e) {
+    if (err) { err.style.color='#cc4444'; err.textContent=e.message; }
+  }
+};
+
+// ── Admin panel functions ─────────────────────────────────────────
+// ── Вкладки админ-панели ────────────────────────────────────────────────────
+let _adminTab = 'users';
+
+window.frAdminPanel = async function(tab) {
+  _adminTab = tab || 'users';
+  const container = document.getElementById('frFriendsList');
+  if (!container) return;
+  container.innerHTML = `<div style="padding:12px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div style="font-size:13px;font-weight:800;color:#aa88ff;">${t('adm_panel')}</div>
+      <button onclick="frSwitchTab('account')" style="background:none;border:none;color:var(--text4);font-size:18px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0;">
+      <button onclick="frAdminPanel('users')" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;${_adminTab==='users'?'background:linear-gradient(135deg,#6644aa,#4422ee);color:#fff;':'background:var(--bg3);border:1px solid var(--border2);color:var(--text3);'}">${t('adm_users')}</button>
+      <button onclick="frAdminPanel('reports')" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;${_adminTab==='reports'?'background:linear-gradient(135deg,#6644aa,#4422ee);color:#fff;':'background:var(--bg3);border:1px solid var(--border2);color:var(--text3);'}">${t('adm_reports')}</button>
+      <button onclick="frAdminStats()" style="flex:1;padding:7px;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;background:var(--bg3);border:1px solid var(--border2);color:var(--text3);transition:.15s;">${t('adm_stats')}</button>
+    </div>
+    ${_adminTab === 'users' ? `
+    <input id="frAdminSearchInput" class="fr-input" placeholder="${t('soc_search_nick')}" oninput="frAdminDoSearch(this.value)" style="flex-shrink:0;">` : ''}
+    <div id="frAdminContent" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;">
+      <div style="color:var(--text4);font-size:12px;text-align:center;padding:16px;">${t('adm_loading')}</div>
+    </div>
+  </div>`;
+
+  if (_adminTab === 'users') {
+    try {
+      const users = await socialAPI('socialAdminUsers', { token: _socialToken, query: '' });
+      frRenderAdminUsers(users);
+    } catch(e) {
+      const c = document.getElementById('frAdminContent');
+      if (c) c.innerHTML = `<div style="color:#cc4444;font-size:12px;">${e.message}</div>`;
+    }
+  } else if (_adminTab === 'reports') {
+    try {
+      const reports = await socialAPI('socialAdminReports', { token: _socialToken });
+      frRenderAdminReports(reports);
+    } catch(e) {
+      const c = document.getElementById('frAdminContent');
+      if (c) c.innerHTML = `<div style="color:#cc4444;font-size:12px;">${e.message}</div>`;
+    }
+  }
+};
+
+window.frAdminDoSearch = async function(q) {
+  try {
+    const users = await socialAPI('socialAdminUsers', { token: _socialToken, query: q || '' });
+    frRenderAdminUsers(users);
+  } catch {}
+};
+
+function frAdminUserIconSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+}
+
+function frAdminCrownSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="#aa88ff" style="display:inline-block;vertical-align:middle;margin-bottom:1px;"><path d="M2 19l3-10 4 5 3-8 3 8 4-5 3 10H2z"/></svg>`;
+}
+
+function frRenderAdminUsers(users) {
+  const list = document.getElementById('frAdminContent');
+  if (!list) return;
+  if (!users || !users.length) { list.innerHTML = `<div style="color:var(--text4);font-size:12px;text-align:center;padding:16px;">${t('adm_no_users')}</div>`; return; }
+  const isDev = _socialUser?.username?.toLowerCase() === 'dev';
+  list.innerHTML = users.map(u => {
+    const adminBtnStyle = u.isAdmin
+      ? `background:#3a1a6e;border:1px solid #aa88ff;color:#aa88ff;`
+      : `background:none;border:1px solid #441133;color:#cc4466;`;
+    const btnBase = `font-size:10px;padding:5px 7px;border-radius:5px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;width:28px;height:28px;box-sizing:border-box;`;
+    return `
+    <div style="background:var(--bg3);padding:8px 10px;border-radius:8px;border:1px solid ${u.banned?'#aa2222':u.isAdmin?'#6644aa55':'var(--border2)'};animation:frFadeIn .18s ease;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:12px;font-weight:600;color:${u.banned?'#cc4444':u.isAdmin?'#aa88ff':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${u.isAdmin ? frAdminCrownSvg()+' ' : ''}${u.displayName || u.username}${u.banned?` <span style="font-size:9px;color:#cc4444;">${t('adm_banned')}</span>`:''}
+          </div>
+          <div style="font-size:10px;color:var(--text4);">@${u.username} · <span style="font-family:monospace;cursor:pointer;text-decoration:underline dotted;" onclick="frAdminCopyId('${u.id}')" title="${t('adm_copy_id')}">${u.id.slice(0,10)}</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,28px);gap:3px;flex-shrink:0;">
+          <button onclick="frAdminViewUser('${u.id}','${u.username}','${(u.displayName||u.username).replace(/'/g,"\\'")}','${u.isAdmin}')" title="${t('adm_view')}" style="${btnBase}background:none;border:1px solid var(--border2);color:var(--text3);">${frAdminUserIconSvg()}</button>
+          <button onclick="frAdminChangeId('${u.id}','${u.username}')" title="${t('adm_change_id')}" style="${btnBase}background:none;border:1px solid #4488cc;color:#4488cc;font-size:9px;font-weight:700;">ID</button>
+          ${isDev ? `<button onclick="${u.isAdmin?`frAdminRevokeAdmin('${u.id}','${u.username}')`:`frAdminGrantAdmin('${u.id}','${u.username}')`}" title="${u.isAdmin?t('adm_revoke_admin'):t('adm_grant_admin_btn')}" style="${btnBase}${adminBtnStyle}font-size:8px;font-weight:900;line-height:1.1;">${u.isAdmin?t('adm_revoke'):t('adm_grant')}</button>` : `<div></div>`}
+          ${u.banned
+            ? `<button onclick="frAdminUnban('${u.id}','${u.username}')" title="${t('adm_unban')}" style="${btnBase}background:none;border:1px solid #44cc88;color:#44cc88;font-size:14px;">↑</button>`
+            : `<button onclick="frAdminBan('${u.id}','${u.username}')" title="${t('adm_ban')}" style="${btnBase}background:none;border:1px solid #cc8822;color:#cc8822;font-size:14px;">⊘</button>`
+          }
+        </div>
+        <button onclick="frAdminDeleteUser('${u.id}','${u.username}')" title="${t('adm_delete')}" style="${btnBase}background:none;border:1px solid #cc4444;color:#cc4444;font-size:14px;flex-shrink:0;">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function frRenderAdminReports(reports) {
+  const list = document.getElementById('frAdminContent');
+  if (!list) return;
+  if (!reports || !reports.length) { list.innerHTML = `<div style="color:var(--text4);font-size:12px;text-align:center;padding:16px;">${t('adm_no_reports')}</div>`; return; }
+  const reasons = { spam:t('adm_spam'), insult:t('adm_abuse'), cheat:t('adm_cheat'), other:t('adm_other') };
+  list.innerHTML = reports.map(r => `
+    <div style="background:var(--bg3);padding:10px;border-radius:8px;border:1px solid var(--border2);animation:frFadeIn .18s ease;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text);">На: @${r.reported_username}</div>
+          <div style="font-size:10px;color:var(--text4);">От: @${r.reporter_username} · ${reasons[r.reason]||r.reason}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button onclick="frAdminBan('${r.reported_id}','${r.reported_username}')" style="font-size:10px;background:none;border:1px solid #cc8822;color:#cc8822;padding:3px 8px;border-radius:5px;cursor:pointer;">Бан</button>
+          <button onclick="frAdminDismissReport('${r.id}')" style="font-size:10px;background:none;border:1px solid var(--border2);color:var(--text3);padding:3px 8px;border-radius:5px;cursor:pointer;">Закрыть</button>
+        </div>
+      </div>
+      ${r.text ? `<div style="font-size:11px;color:var(--text3);background:var(--bg);padding:6px 8px;border-radius:6px;">${r.text}</div>` : ''}
+    </div>`).join('');
+}
+
+window.frAdminBan = function(userId, username) {
+  frConfirmModal({
+    icon: null,
+    title: t('adm_ban_title') + username + '?',
+    subtitle: t('adm_ban_desc'),
+    confirmLabel: t('adm_ban'),
+    confirmClass: 'danger',
+    requirePassword: false,
+    onConfirm: async () => {
+      await socialAPI('socialAdminBan', { token: _socialToken, userId });
+      frAdminPanel(_adminTab);
+    }
+  });
+};
+
+window.frAdminUnban = function(userId, username) {
+  frConfirmModal({
+    icon: null,
+    title: t('adm_unban_title') + username + '?',
+    subtitle: t('adm_unban_desc'),
+    confirmLabel: t('adm_unban'),
+    confirmClass: '',
+    requirePassword: false,
+    onConfirm: async () => {
+      await socialAPI('socialAdminUnban', { token: _socialToken, userId });
+      frAdminPanel(_adminTab);
+    }
+  });
+};
+
+window.frAdminDeleteUser = function(userId, username) {
+  frConfirmModal({
+    icon: null,
+    title: t('adm_delete_title') + username + '?',
+    subtitle: t('adm_delete_desc'),
+    confirmLabel: t('adm_delete'),
+    confirmClass: 'danger',
+    requirePassword: false,
+    onConfirm: async () => {
+      await socialAPI('socialAdminDeleteUser', { token: _socialToken, userId });
+      frAdminPanel(_adminTab);
+    }
+  });
+};
+
+window.frAdminDismissReport = async function(reportId) {
+  try {
+    await socialAPI('socialAdminDismissReport', { token: _socialToken, reportId });
+    frAdminPanel('reports');
+  } catch(e) { console.error(e); }
+};
+
+window.frAdminCopyId = function(userId) {
+  navigator.clipboard?.writeText(userId).catch(() => {});
+};
+
+window.frAdminViewUser = function(userId, username, displayName, isAdmin) {
+  document.getElementById('frConfirmModalOverlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'frConfirmModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;animation:frOverlayIn .15s ease;';
+  const adminBadge = (isAdmin === 'true' || isAdmin === true)
+    ? `<span style="font-size:10px;background:linear-gradient(135deg,#6644aa,#4422ee);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700;">ADMIN</span>` : '';
+  overlay.innerHTML = `
+    <div style="background:#1a1a2e;border:1px solid #6644aa55;border-radius:14px;padding:24px;min-width:280px;max-width:360px;animation:frBoxIn .18s ease;text-align:center;">
+      <div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#6644aa,#4422ee);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:26px;font-weight:800;color:#fff;">
+        ${(displayName||username||'?')[0].toUpperCase()}
+      </div>
+      <div style="font-size:16px;font-weight:800;color:#e8e8f0;margin-bottom:4px;">${displayName}</div>
+      <div style="font-size:12px;color:#8888aa;margin-bottom:8px;">@${username}</div>
+      <div style="font-size:10px;font-family:monospace;color:#666688;margin-bottom:10px;cursor:pointer;" onclick="navigator.clipboard?.writeText('${userId}')" title="${t('adm_copy')}">ID: ${userId}</div>
+      ${adminBadge}
+      <div style="margin-top:16px;">
+        <button onclick="document.getElementById('frConfirmModalOverlay').remove()" style="padding:8px 24px;border:1px solid var(--border2);background:none;color:var(--text3);border-radius:8px;cursor:pointer;font-size:13px;">Закрыть</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+};
+
+window.frAdminChangeId = function(userId, username) {
+  frInputModal({
+    title: t('adm_change_id_title') + username,
+    subtitle: t('adm_change_id_desc'),
+    placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+    confirmLabel: t('adm_change_id_btn'),
+    confirmClass: 'danger',
+    validate: v => v.length < 1 ? 'ID не может быть пустым' : null,
+    onConfirm: async (newId) => {
+      try {
+        await socialAPI('socialAdminChangeId', { token: _socialToken, userId, newId });
+        frAdminPanel(_adminTab);
+      } catch(e) {
+        alert(t('adm_change_id_err') + ' ' + e.message);
+      }
+    }
+  });
+};
+
+window.frAdminGrantAdmin = function(userId, username) {
+  frConfirmModal({
+    icon: null,
+    title: `${t('adm_grant_title').replace('@','@' + username + ' ')}`,
+    subtitle: t('adm_grant_desc'),
+    confirmLabel: t('adm_grant_btn'),
+    confirmClass: '',
+    requirePassword: false,
+    onConfirm: async () => {
+      const res = await socialAPI('socialAdminGrantAdmin', { token: _socialToken, userId });
+      if (res && res.error) { alert(res.error); return; }
+      frAdminPanel(_adminTab);
+    }
+  });
+};
+
+window.frAdminRevokeAdmin = function(userId, username) {
+  frConfirmModal({
+    icon: null,
+    title: t('adm_revoke_title') + username + '?',
+    subtitle: t('adm_revoke_desc'),
+    confirmLabel: t('adm_revoke_admin'),
+    confirmClass: 'danger',
+    requirePassword: false,
+    onConfirm: async () => {
+      const res = await socialAPI('socialAdminRevokeAdmin', { token: _socialToken, userId });
+      if (res && res.error) { alert(res.error); return; }
+      frAdminPanel(_adminTab);
+    }
+  });
+};
+
+window.frAdminStats = async function() {
+  const container = document.getElementById('frFriendsList');
+  if (!container) return;
+  container.innerHTML = `<div style="padding:12px;display:flex;flex-direction:column;gap:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:13px;font-weight:800;color:#aa88ff;">Статистика</div>
+      <button onclick="frSwitchTab('account')" style="background:none;border:none;color:var(--text4);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div id="frAdminStatsContent" style="display:flex;flex-direction:column;gap:8px;">
+      <div style="color:var(--text4);font-size:12px;text-align:center;padding:16px;">${t('adm_loading')}</div>
+    </div>
+  </div>`;
+  try {
+    const stats = await socialAPI('socialAdminStats', { token: _socialToken });
+    const sc = document.getElementById('frAdminStatsContent');
+    if (sc) sc.innerHTML = [
+      { label: t('adm_stat_users'), value: stats.users },
+      { label: t('adm_stat_friends'), value: stats.friends },
+      { label: t('adm_stat_msgs'), value: stats.messages },
+      { label: t('adm_stat_online'), value: stats.online },
+    ].map(s => `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg3);padding:10px 14px;border-radius:9px;border:1px solid var(--border2);animation:frFadeIn .2s ease;">
+      <div style="font-size:12px;color:var(--text3);">${s.label}</div>
+      <div style="font-size:18px;font-weight:800;color:#aa88ff;">${s.value ?? '—'}</div>
+    </div>`).join('');
+  } catch(e) {
+    const sc = document.getElementById('frAdminStatsContent');
+    if (sc) sc.innerHTML = `<div style="color:#cc4444;font-size:12px;">${e.message}</div>`;
+  }
+};
+
+window.frUnlinkAccount = async function(type) {
+  const err = document.getElementById('frLinkErr');
+  try {
+    const res = await socialAPI('socialUnlink', { token:_socialToken, type });
+    _socialUser = { ..._socialUser, linkedAccounts: res.linkedAccounts };
+    socialSaveSession(_socialToken, _socialUser);
+    // Остаёмся на вкладке аккаунта
+    const container = document.getElementById('frFriendsList');
+    if (container) renderAccountTab(container);
+  } catch(e) {
+    if (err) { err.style.color='#cc4444'; err.textContent=e.message; }
+  }
+};
+
+window.frSetupAvatar = async function() {
+  // Triggered from setup step: use MC skin
+  try {
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    if (!acc) { frSkipAvatar(); return; }
+    const skin = await window.electronAPI?.fetchSkin({ username:acc.username, type:acc.type });
+    if (!skin) { frSkipAvatar(); return; }
+    const head = await frBuildHeadFromSkin(skin);
+    frSaveAvatar(head);
+  } catch {}
+  _friendsView = 'main';
+  await socialLoadFriendList(); socialConnect(); loadFriends();
+};
+
+window.frUploadAvatarSetup = function() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = () => {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      frSaveAvatar(e.target.result);
+      _friendsView = 'main';
+      await socialLoadFriendList(); socialConnect(); loadFriends();
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+};
+
+window.frSkipAvatar = async function() {
+  _friendsView = 'main';
+  await socialLoadFriendList(); socialConnect(); loadFriends();
+};
+
+// ── Styled 2FA / confirm modal ────────────────────────────────────────────────
+function frConfirmModal({ icon, title, subtitle, confirmLabel, confirmClass, requirePassword, onConfirm }) {
+  // Remove existing
+  document.getElementById('frConfirmModalOverlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'frConfirmModalOverlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:200000;
+    background:rgba(0,0,0,.7);backdrop-filter:blur(6px);
+    display:flex;align-items:center;justify-content:center;
+    animation:frOverlayIn .18s ease;
+  `;
+
+  const box = document.createElement('div');
+  box.style.cssText = `
+    background:#13131a;border:1px solid #2a2a3a;border-radius:20px;
+    padding:32px 36px;width:360px;display:flex;flex-direction:column;gap:18px;
+    box-shadow:0 24px 80px rgba(0,0,0,.8);
+    animation:frBoxIn .22s cubic-bezier(.34,1.56,.64,1);
+  `;
+
+  const iconEl = document.createElement('div');
+  iconEl.style.cssText = `font-size:36px;text-align:center;`;
+  iconEl.textContent = icon || '';
+  if (!icon) iconEl.style.display = 'none';
+
+  const titleEl = document.createElement('div');
+  titleEl.style.cssText = `text-align:center;`;
+  titleEl.innerHTML = `
+    <div style="font-size:17px;font-weight:800;color:#e8e8f0;margin-bottom:6px;">${title}</div>
+    <div style="font-size:12px;color:#666680;line-height:1.5;">${subtitle || ''}</div>
+  `;
+
+  let passInput = null;
+  if (requirePassword) {
+    passInput = document.createElement('input');
+    passInput.type = 'password';
+    passInput.placeholder = t('soc_confirm_pass');
+    passInput.className = 'fr-input';
+    passInput.style.cssText = `text-align:center;font-size:14px;letter-spacing:2px;`;
+    passInput.autocomplete = 'current-password';
+  }
+
+  const errEl = document.createElement('div');
+  errEl.style.cssText = `font-size:12px;color:#cc4444;text-align:center;min-height:16px;`;
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = `display:flex;gap:10px;`;
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = t('soc_cancel');
+  cancelBtn.className = 'fr-submit';
+  cancelBtn.style.cssText = `background:var(--bg3);border:1px solid var(--border2);color:var(--text2);flex:1;`;
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.textContent = confirmLabel || t('soc_confirm');
+  confirmBtn.className = 'fr-submit';
+  if (confirmClass === 'danger') {
+    confirmBtn.style.cssText = `flex:1;background:#cc2222;color:#fff;border:none;`;
+  } else {
+    confirmBtn.style.cssText = `flex:1;`;
+  }
+
+  cancelBtn.onclick = () => overlay.remove();
+  confirmBtn.onclick = async () => {
+    const pass = passInput ? passInput.value : null;
+    if (requirePassword && !pass) { errEl.textContent = t('soc_enter_pass2'); return; }
+    confirmBtn.disabled = true; cancelBtn.disabled = true;
+    confirmBtn.textContent = '...';
+    try {
+      await onConfirm(pass);
+      overlay.remove();
+    } catch(e) {
+      errEl.textContent = e.message || t('err_short');
+      confirmBtn.disabled = false; cancelBtn.disabled = false;
+      confirmBtn.textContent = confirmLabel || t('soc_confirm');
+    }
+  };
+
+  if (passInput) {
+    passInput.addEventListener('keydown', e => { if (e.key === 'Enter') confirmBtn.click(); });
+  }
+
+  btnRow.append(cancelBtn, confirmBtn);
+  box.append(iconEl, titleEl);
+  if (passInput) box.append(passInput);
+  box.append(errEl, btnRow);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  if (passInput) setTimeout(() => passInput.focus(), 50);
+
+  // Add keyframes once
+  if (!document.getElementById('frConfirmModalStyles')) {
+    const s = document.createElement('style');
+    s.id = 'frConfirmModalStyles';
+    s.textContent = `
+      @keyframes frOverlayIn { from { opacity:0; } to { opacity:1; } }
+      @keyframes frBoxIn { from { opacity:0;transform:scale(.88) translateY(16px); } to { opacity:1;transform:none; } }
+    `;
+    document.head.appendChild(s);
+  }
+}
+
+function frInputModal({ title, subtitle, placeholder, confirmLabel, confirmClass, validate, onConfirm }) {
+  document.getElementById('frConfirmModalOverlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'frConfirmModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;animation:frOverlayIn .15s ease;';
+  overlay.innerHTML = `
+    <div style="background:#1a1a2e;border:1px solid #6644aa55;border-radius:14px;padding:22px 24px;min-width:320px;max-width:420px;animation:frBoxIn .18s ease;">
+      <div style="font-size:15px;font-weight:800;color:#e8e8f0;margin-bottom:6px;">${title}</div>
+      ${subtitle ? `<div style="font-size:12px;color:#8888aa;margin-bottom:14px;">${subtitle}</div>` : ''}
+      <input id="frInputModalField" class="fr-input" placeholder="${placeholder||''}" style="width:100%;margin-bottom:6px;box-sizing:border-box;">
+      <div id="frInputModalErr" style="font-size:11px;color:#cc4444;min-height:16px;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="frInputModalCancel" style="padding:8px 18px;border:1px solid var(--border2);background:none;color:var(--text3);border-radius:8px;cursor:pointer;font-size:13px;">Отмена</button>
+        <button id="frInputModalConfirm" style="padding:8px 18px;border:none;background:${confirmClass==='danger'?'#cc3333':'linear-gradient(135deg,#6644aa,#4422ee)'};color:#fff;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">${confirmLabel||t('soc_confirm')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const inp = document.getElementById('frInputModalField');
+  const err = document.getElementById('frInputModalErr');
+  setTimeout(() => inp.focus(), 50);
+  document.getElementById('frInputModalCancel').onclick = () => overlay.remove();
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  document.getElementById('frInputModalConfirm').onclick = async () => {
+    const val = inp.value.trim();
+    if (validate) { const msg = validate(val); if (msg) { err.textContent = msg; return; } }
+    overlay.remove();
+    await onConfirm(val);
+  };
+  inp.onkeydown = e => { if (e.key === 'Enter') document.getElementById('frInputModalConfirm')?.click(); };
+}
+
+window.frLogout = function() {
+  frConfirmModal({
+    icon: null,
+    title: t('soc_logout_title'),
+    subtitle: t('soc_logout_desc'),
+    confirmLabel: t('soc_logout'),
+    requirePassword: false,
+    onConfirm: async () => {
+      if (_socialWS) { try { _socialWS.close(); } catch {} _socialWS = null; }
+      socialClearSession();
+      frClearAvatar();
+      _socialFriends = []; _socialPending = []; _socialOnline.clear();
+      _friendsView = 'login';
+      loadFriends();
+    }
+  });
+};
+
+window.frDeleteAccount = function() {
+  // Проверяем зарегистрирован ли юзер через OAuth (без пароля)
+  const isOAuthOnly = _socialUser && (!_socialUser._hasPassword);
+  frConfirmModal({
+    icon: null,
+    title: t('soc_delete_title'),
+    subtitle: isOAuthOnly
+      ? t('soc_delete_full')
+      : t('soc_delete_full'),
+    confirmLabel: t('soc_delete_confirm'),
+    confirmClass: 'danger',
+    requirePassword: !isOAuthOnly,
+    onConfirm: async (password) => {
+      // OAuth-юзеры удаляются без пароля — передаём пустую строку
+      const res = await socialAPI('socialDeleteAccount', { token: _socialToken, password: password || '__oauth_delete__' });
+      if (!res || !res.ok) throw new Error(res?.error || t('soc_delete_err'));
+      if (_socialWS) { try { _socialWS.close(); } catch {} _socialWS = null; }
+      socialClearSession();
+      frClearAvatar();
+      _socialFriends = []; _socialPending = []; _socialOnline.clear();
+      _friendsView = 'login';
+      loadFriends();
+    }
+  });
+};
+
+// ── Wizard step helper ────────────────────────────────────────────
+function frWizardStep(step, total, label) {
+  return `<div class="fr-wizard-steps">
+    ${Array.from({length:total},(_,i)=>`<div class="fr-wizard-dot ${i<step?'done':i===step?'active':''}"></div>`).join('')}
+    <span class="fr-wizard-label">${label}</span>
+  </div>`;
+}
+
+// ── Main render ───────────────────────────────────────────────────
+async function loadFriends() {
+  const content = document.getElementById('content');
+
+  if (_friendsView === 'login' && socialLoadSession()) {
+    try {
+      const me = await socialAPI('socialMe', { token:_socialToken });
+      _socialUser = me; _friendsView = 'main'; await socialLoadFriendList(); socialConnect();
+    } catch { socialClearSession(); _friendsView = 'login'; }
+  }
+
+  // ── Login / Register view ──────────────────────────────────────
+  if (_friendsView === 'login') {
+    content.style.overflow = 'auto'; content.style.padding = '0'; content.style.margin = '0'; content.style.maxHeight = 'none'; content.style.height = 'calc(100vh - 98px)'; content.style.opacity = '1'; content.style.pointerEvents = ''; content.style.userSelect = '';
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    const allAccs = typeof acAllAccounts !== 'undefined' ? acAllAccounts : [];
+    const hasMs    = allAccs.some(a => a.type === 'microsoft') || (acc && acc.type === 'microsoft');
+    const hasElyby = allAccs.some(a => a.type === 'elyby') || (acc && acc.type === 'elyby');
+    // OAuth buttons are always shown; if no linked MC account, they show an error
+    const oauthLoginMs    = hasMs    ? "frLoginOAuth('microsoft')"    : "frOAuthNoAccount('login','Microsoft')";
+    const oauthLoginElyby = hasElyby ? "frLoginOAuth('elyby')"        : "frOAuthNoAccount('login','Ely.by')";
+    const oauthRegMs      = hasMs    ? "frRegisterOAuth('microsoft')" : "frOAuthNoAccount('register','Microsoft')";
+    const oauthRegElyby   = hasElyby ? "frRegisterOAuth('elyby')"     : "frOAuthNoAccount('register','Ely.by')";
+    const oauthBtnStyle   = (type) => hasMs && type==='ms' || hasElyby && type==='ely'
+      ? 'background:var(--bg3);border:1px solid var(--border2);color:var(--text2);'
+      : 'background:var(--bg3);border:1px solid var(--border2);color:#556;opacity:.65;';
+    content.innerHTML = `
+      <div class="fr-auth-wrap" style="min-height:100%;box-sizing:border-box;">
+        <div class="fr-auth-box">
+          <div class="fr-auth-logo">MidLauncher <span style="color:var(--accent)">Social</span></div>
+          <div class="fr-auth-tabs">
+            <button class="fr-auth-tab active" onclick="frAuthTab('login',this)">${t('soc_login')}</button>
+            <button class="fr-auth-tab" onclick="frAuthTab('register',this)">${t('soc_reg_short')}</button>
+          </div>
+          <div id="frAuthLogin">
+            <input id="frLoginUsername" class="fr-input" type="text" placeholder="${t('soc_nick_ph')}" autocomplete="username">
+            <input id="frLoginPass" class="fr-input" type="password" placeholder="${t('soc_pass_ph')}" autocomplete="current-password"
+              onkeydown="if(event.key==='Enter')frLogin()">
+            <div class="fr-err" id="frLoginErr"></div>
+            <button id="frLoginBtn" class="fr-submit" onclick="frLogin()">${t('soc_login')}</button>
+            <div class="fr-oauth-divider"><span>${t('or_label')}</span></div>
+            <button class="fr-submit" style="${oauthBtnStyle('ms')}" onclick="${oauthLoginMs}">${t('soc_login_ms')}</button>
+            <button class="fr-submit" style="${oauthBtnStyle('ely')}" onclick="${oauthLoginElyby}">${t('soc_login_ely')}</button>
+          </div>
+          <div id="frAuthRegister" style="display:none">
+            <input id="frRegUsername" class="fr-input" type="text" placeholder="${t('soc_nick_ph2')}" autocomplete="username" maxlength="64">
+            <input id="frRegDisplayName" class="fr-input" type="text" placeholder="${t('soc_dname_ph')}" maxlength="32" style="margin-top:6px;">
+            <input id="frRegPass"  class="fr-input" type="password" placeholder="${t('soc_pass_ph2')}" autocomplete="new-password">
+            <input id="frRegPass2" class="fr-input" type="password" placeholder="${t('soc_repeat_pass')}" autocomplete="new-password"
+              onkeydown="if(event.key==='Enter')frRegister()">
+            <div class="fr-err" id="frRegErr"></div>
+            <button id="frRegBtn" class="fr-submit" onclick="frRegister()">${t('soc_register')}</button>
+            <div class="fr-oauth-divider"><span>${t('soc_reg_via')}</span></div>
+            <button class="fr-submit" style="${oauthBtnStyle('ms')}" onclick="${oauthRegMs}">${t('soc_reg_via')} Microsoft</button>
+            <button class="fr-submit" style="${oauthBtnStyle('ely')}" onclick="${oauthRegElyby}">${t('soc_reg_via')} Ely.by</button>
+          </div>
+        </div>
+      </div>`;
+    window.frOAuthNoAccount = function(action, service) {
+  const errId = action === 'login' ? 'frLoginErr' : 'frRegErr';
+  const el = document.getElementById(errId);
+  if (el) {
+    el.style.color = '#cc8822';
+    el.textContent = t('soc_no_acc_service').replace('{service}', service);
+    setTimeout(() => { if (el) el.textContent = ''; }, 5000);
+  }
+};
+
+window.frAuthTab = function(tab, el) {
+      document.querySelectorAll('.fr-auth-tab').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('frAuthLogin').style.display    = tab==='login'    ? '' : 'none';
+      document.getElementById('frAuthRegister').style.display = tab==='register' ? '' : 'none';
+    };
+    return;
+  }
+
+  // ── Setup avatar view ─────────────────────────────────────────
+  if (_friendsView === 'setup_avatar') {
+    content.style.overflow = 'auto'; content.style.padding = '0'; content.style.margin = '0'; content.style.maxHeight = 'none'; content.style.height = 'calc(100vh - 98px)'; content.style.opacity = '1';
+    const acc_av = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    const hasMC = acc_av && acc_av.type !== 'local';
+    content.innerHTML = `
+      <div class="fr-auth-wrap" style="min-height:100%;box-sizing:border-box;">
+        <div class="fr-auth-box" style="gap:14px;">
+          <div class="fr-auth-logo">Выбери аватарку</div>
+          <div class="fr-avatar-preview" id="frAvatarPreview">
+            ${(_socialUser?.displayName||_socialUser?.username||'?')[0].toUpperCase()}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${hasMC ? `<button class="fr-submit" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);" onclick="frSetupAvatarPreviewMC()">${t('soc_use_skin')}</button>` : ''}
+            <button class="fr-submit" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);" onclick="frUploadAvatarSetup()">Загрузить фото</button>
+            <button class="fr-submit" onclick="frConfirmAvatarSetup()">Готово →</button>
+            <button onclick="frSkipAvatar()" style="background:none;border:none;color:var(--text4);font-size:12px;cursor:pointer;text-decoration:underline;padding:4px;">Пропустить</button>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // ── Main view ─────────────────────────────────────────────────
+  content.style.overflow = 'hidden';
+  content.style.padding  = '0';
+  content.style.margin   = '0';
+  content.style.maxHeight = '100%';
+  content.style.height   = 'calc(100vh - 98px)';
+
+  const _av      = frGetAvatar();
+  const _initial = (_socialUser?.displayName || _socialUser?.username || '?')[0].toUpperCase();
+  const _shortId = _socialUser?.id ? _socialUser.id.replace(/-/g,'').slice(0, 12) : '';
+
+  content.innerHTML = `
+    <div class="fr-root" id="frMain">
+      <div class="fr-sidebar">
+        <div class="fr-me">
+          <div class="fr-me-avatar" id="frMeAvatar" onclick="frClickAvatar()" title="${t('soc_change_avatar')}" style="cursor:pointer;position:relative;">
+            ${_av ? `<img src="${_av}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : _initial}
+          </div>
+          <div class="fr-me-info">
+            <div class="fr-me-name" style="display:flex;align-items:center;gap:5px;">
+              ${_socialUser?.displayName || _socialUser?.username || '—'}
+              ${_socialUser?.username?.toLowerCase() === 'dev' ? '<span style="font-size:9px;background:linear-gradient(135deg,#6644aa,#4422ee);color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;letter-spacing:.3px;">DEV</span>' : ''}
+            </div>
+            <div class="fr-me-tag">@${_socialUser?.username || '—'}</div>
+            <div class="fr-me-id" title="${t('soc_your_id')}" onclick="navigator.clipboard?.writeText('${_shortId}');this.textContent=t('soc_id_copied');setTimeout(()=>this.textContent='ID: ${_shortId}',1500);" style="cursor:pointer;">ID: ${_shortId}</div>
+          </div>
+          <button class="fr-logout-btn" onclick="frLogout()" title="${t('soc_logout')}">⇥</button>
+        </div>
+
+        <div class="fr-tabs">
+          <div id="frFriendsTabActive" data-tab="friends" style="display:none"></div>
+          <button class="fr-tab-btn active" data-tab="friends" onclick="frSwitchTab('friends')">Друзья</button>
+          <button class="fr-tab-btn" data-tab="pending" id="frPendingTab" onclick="frSwitchTab('pending')">${t('soc_pending')}</button>
+          <button class="fr-tab-btn" data-tab="account" onclick="frSwitchTab('account')">Аккаунт</button>
+        </div>
+
+        <div class="fr-friends-list" id="frFriendsList"></div>
+
+        <div class="fr-add-section">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Добавить друга</div>
+          <div style="display:flex;gap:6px;">
+            <input id="frAddInput" class="fr-input fr-add-input" placeholder="@username или ID" autocomplete="off"
+              onkeydown="if(event.key==='Enter')frAddFriend()">
+            <button class="fr-add-btn" onclick="frAddFriend()">+</button>
+          </div>
+          <div class="fr-err" id="frAddError" style="margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <div class="fr-chat-panel" id="frChat" style="display:none;flex-direction:column;">
+        <div class="fr-chat-header">
+          <button class="fr-back-btn" onclick="frCloseChat()">←</button>
+          <div class="fr-chat-avatar" id="frChatAvatar">?</div>
+          <div>
+            <div id="frChatName"    style="font-weight:700;color:var(--text);font-size:14px;"></div>
+            <div id="frChatSubname" style="font-size:11px;color:var(--text3);"></div>
+          </div>
+        </div>
+        <div class="fr-chat-messages" id="frChatMessages"></div>
+        <div class="fr-chat-input-row">
+          <input id="frChatInput" class="fr-input" placeholder="${t('soc_msg_placeholder')}" style="flex:1;"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){frSendMessage();event.preventDefault();}">
+          <button class="fr-send-btn" onclick="frSendMessage()">↑</button>
+        </div>
+      </div>
+    </div>`;
+
+  socialRefreshFriendsList();
+  frAutoSetMCAvatar();
+}
+
+window.frSetupAvatarPreviewMC = async function() {
+  try {
+    const acc = typeof acCurrentAccount !== 'undefined' ? acCurrentAccount : null;
+    if (!acc) return;
+    const skin = await window.electronAPI?.fetchSkin({ username:acc.username, type:acc.type });
+    if (!skin) return;
+    const head = await frBuildHeadFromSkin(skin);
+    const prev = document.getElementById('frAvatarPreview');
+    if (prev) prev.innerHTML = `<img src="${head}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    prev._pendingAvatar = head;
+  } catch {}
+};
+
+window.frConfirmAvatarSetup = async function() {
+  const prev = document.getElementById('frAvatarPreview');
+  if (prev?._pendingAvatar) frSaveAvatar(prev._pendingAvatar);
+  await frSkipAvatar();
+};
+
+function loadTab(tab) {
+  const c = document.getElementById('content');
+  if (c) {
+    // Always restore opacity (set during boot init)
+    c.style.opacity  = '1';
+    if (tab !== 'friends') {
+      // Reset only properties we set in friends view
+      c.style.overflow  = '';
+      c.style.padding   = '';
+      c.style.margin    = '';
+      c.style.maxHeight = '';
+      c.style.height    = '';
+    }
+  }
+  ({ launcher:loadLauncher, mods:loadMods, files:loadFiles, settings:loadSettings, friends:loadFriends }[tab] || loadLauncher)();
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -2734,14 +4288,16 @@ function loadSettings() {
 function renderSettingsPage() {
   const content = document.getElementById('content');
   content.innerHTML = `
-<div class="settings-tabs">
-  <div class="settings-tab${settingsTab==='minecraft'?' active':''}" onclick="switchSettingsTab('minecraft')">${t('settings_tab_mc')}</div>
-  <div class="settings-tab${settingsTab==='launcher'?' active':''}" onclick="switchSettingsTab('launcher')">${t('settings_tab_launcher')}</div>
-</div>
-<div id="settingsBody"></div>
-<div class="settings-footer">
-  <button class="settings-save-btn main" onclick="saveSettings()">${t('settings_save')}</button>
-  <button class="settings-save-btn default" onclick="resetSettings()">${t('settings_reset')}</button>
+<div style="display:flex;flex-direction:column;min-height:calc(100vh - 140px);box-sizing:border-box;">
+  <div class="settings-tabs">
+    <div class="settings-tab${settingsTab==='minecraft'?' active':''}" onclick="switchSettingsTab('minecraft')">${t('settings_tab_mc')}</div>
+    <div class="settings-tab${settingsTab==='launcher'?' active':''}" onclick="switchSettingsTab('launcher')">${t('settings_tab_launcher')}</div>
+  </div>
+  <div id="settingsBody" style="flex:1;"></div>
+  <div class="settings-footer" style="padding-top:16px;padding-bottom:4px;margin-top:auto;">
+    <button class="settings-save-btn main" onclick="saveSettings()">${t('settings_save')}</button>
+    <button class="settings-save-btn default" onclick="resetSettings()">${t('settings_reset')}</button>
+  </div>
 </div>`;
   renderSettingsTab();
 }
@@ -2792,14 +4348,14 @@ function buildMinecraftTab() {
     <div class="settings-label">${t('settings_java')}</div>
     <div class="settings-control">
       <div class="dd-wrap" style="flex:1">
-        <div class="dd-trigger" id="javaTypeTrigger" onclick="toggleJavaDD(event)">${javaLabels[s.javaType]||'Рекомендуемая'}</div>
+        <div class="dd-trigger" id="javaTypeTrigger" onclick="toggleJavaDD(event)">${javaLabels[s.javaType]||t('java_recommended')}</div>
         <div class="dd-list" id="javaTypeList">
           <div class="dd-scroll">
             ${Object.entries(javaLabels).map(([k,v])=>`<div class="dd-item${s.javaType===k?' selected':''}" onclick="setJavaType('${k}')">${v}</div>`).join('')}
           </div>
         </div>
       </div>
-      <button class="settings-btn primary" onclick="openJavaDetail()">${t('java_details')}</button>
+      <button class="settings-btn" onclick="openJavaDetail()">${t('java_details')}</button>
     </div>
   </div>
 
@@ -2882,7 +4438,7 @@ function buildLauncherTab() {
     <div class="settings-control">
       <div class="dd-wrap" style="flex:1;max-width:240px">
         <div class="dd-trigger" id="langTrigger" onclick="toggleLangDD(event)">
-          ${LANGUAGES.find(l=>l[0]===s.language)?.[1] || 'Русский'}
+          ${LANGUAGES.find(l=>l[0]===s.language)?.[1] || LANGUAGES[0][1]}
         </div>
         <div class="dd-list" id="langList" style="max-height:220px">
           <div class="dd-scroll" style="max-height:210px">
@@ -2894,16 +4450,16 @@ function buildLauncherTab() {
   </div>
 
   <div class="settings-row">
-    <div class="settings-label">Анимированный фон</div>
+    <div class="settings-label">${t('bg_label')}</div>
     <div class="settings-control">
       <div class="dd-wrap" style="flex:1;max-width:240px">
         <div class="dd-trigger" id="bgTypeTrigger" onclick="toggleBgTypeDD(event)">
-          ${s.backgroundType === 'animated' ? 'Анимированный фон' : 'Обычный фон'}
+          ${s.backgroundType === 'animated' ? t('bg_animated') : t('bg_static')}
         </div>
         <div class="dd-list" id="bgTypeList">
           <div class="dd-scroll">
-            <div class="dd-item${s.backgroundType!=='animated'?' selected':''}" data-val="plain" onclick="setBgType('plain','Обычный фон')">Обычный фон</div>
-            <div class="dd-item${s.backgroundType==='animated'?' selected':''}" data-val="animated" onclick="setBgType('animated','Анимированный фон')">Анимированный фон</div>
+            <div class="dd-item${s.backgroundType!=='animated'?' selected':''}" data-val="plain" onclick="setBgType('plain',t('bg_static'))">${t('bg_static')}</div>
+            <div class="dd-item${s.backgroundType==='animated'?' selected':''}" data-val="animated" onclick="setBgType('animated',t('bg_animated'))">${t('bg_animated')}</div>
           </div>
         </div>
       </div>
@@ -2911,16 +4467,16 @@ function buildLauncherTab() {
   </div>
 
   <div class="settings-row">
-    <div class="settings-label">Тема оформления</div>
+    <div class="settings-label">${t('theme_label')}</div>
     <div class="settings-control">
       <div class="dd-wrap" style="flex:1;max-width:240px">
         <div class="dd-trigger" id="themeTrigger" onclick="toggleThemeDD(event)">
-          ${s.theme === 'light' ? 'Светлая' : 'Тёмная'}
+          ${s.theme === 'light' ? t('theme_light') : t('theme_dark')}
         </div>
         <div class="dd-list" id="themeList">
           <div class="dd-scroll">
-            <div class="dd-item${s.theme!=='light'?' selected':''}" data-val="dark"  onclick="setTheme('dark','Тёмная')">Тёмная</div>
-            <div class="dd-item${s.theme==='light'?' selected':''}" data-val="light" onclick="setTheme('light','Светлая')">Светлая</div>
+            <div class="dd-item${s.theme!=='light'?' selected':''}" data-val="dark"  onclick="setTheme('dark',t('theme_dark'))">${t('theme_dark')}</div>
+            <div class="dd-item${s.theme==='light'?' selected':''}" data-val="light" onclick="setTheme('light',t('theme_light'))">${t('theme_light')}</div>
           </div>
         </div>
       </div>
@@ -3086,10 +4642,10 @@ window.openJavaDetail = function() {
     { k:'custom',      name:t('java_custom'),       desc:t('java_cust_desc') },
   ];
   modal.querySelector('#jdTypeGrid').innerHTML = types.map(tp => `
-    <div class="java-type-btn${s.javaType===t.k?' active':''}" onclick="setJdType('${t.k}')">
-      <div class="jt-name">${t.name}</div>
-      <div class="jt-desc">${t.desc}</div>
-      ${t.warn?`<div class="jt-warn">${t.warn}</div>`:''}
+    <div class="java-type-btn${s.javaType===tp.k?' active':''}" onclick="setJdType('${tp.k}')">
+      <div class="jt-name">${tp.name}</div>
+      <div class="jt-desc">${tp.desc}</div>
+      ${tp.warn?`<div class="jt-warn">${tp.warn}</div>`:''}
     </div>`).join('');
   updateJdCustomSection();
   modal.classList.add('open');
@@ -3171,12 +4727,12 @@ window.saveJavaDetail = function() {
 // t() reads settingsDraft so language change is instant on save+re-render
 function t(key) {
   const lang = config?.settings?.language || 'ru';
-  return T[lang]?.[key] ?? T.ru?.[key] ?? key;
+  return T?.[lang]?.[key] ?? T?.ru?.[key] ?? key;
 }
 
-const T = {
+var T = {
   ru: {
-    nav_launcher:'Лаунчер', nav_mods:'Моды', nav_files:'Файлы', nav_settings:'Настройки',
+    nav_launcher:'Лаунчер', nav_mods:'Моды', nav_files:'Файлы', nav_settings:'Настройки', nav_friends:'Друзья',
     play:'Играть', stop:'Стоп', cancel:'Отмена',
     loading:'Загрузка...', search:'Поиск...', search_mods:'Поиск модов...',
     my_modpacks:'Мои модпаки', tab_mod:'Моды', tab_resourcepack:'Ресурс паки',
@@ -3294,10 +4850,10 @@ const T = {
     npm_start_warn:'Запусти через npm start',
     err_load_versions:'Ошибка загрузки версий',
     opening_browser:'Открываю браузер...',
-    login_elyby:'Войти через Ely.by',
+    login_elyby:'Sign in via Ely.by',
     opening_login:'Открываю окно входа...',
     auth_error:'Ошибка авторизации',
-    login_ms:'Войти через Microsoft',
+    login_ms:'Sign in via Microsoft',
     local_enter_nick:'Введите никнейм',
     local_min_chars:'Минимум 3 символа',
     dir_not_found:'Папка не найдена',
@@ -3357,9 +4913,128 @@ const T = {
     enter_query:'Введите запрос для поиска',
     src_all:'Все',
     ac_type_local:'Офлайн',
+
+    // Social / Friends
+    soc_friends:'Друзья', soc_pending:'Заявки', soc_account:'Аккаунт',
+    soc_online:'Онлайн', soc_offline:'Офлайн', soc_connect:'Войти',
+    soc_remove_friend:'Удалить друга', soc_block:'Заблокировать', soc_report:'Пожаловаться',
+    soc_no_friends:'Друзей пока нет.', soc_add_hint:'Добавь по @username или ID',
+    soc_no_pending:'Нет входящих заявок',
+    soc_new_nick:'Новый никнейм', soc_display_name:'Отображаемое имя',
+    soc_linked:'Привязан', soc_not_linked:'Не привязан',
+    soc_unlink:'Отвязать', soc_link:'Привязать',
+    soc_link_ms:'Авторизируйся через Microsoft', soc_link_ely:'Авторизируйся через Ely.by',
+    soc_new_pass:'Новый пароль (мин. 6 символов)', soc_repeat_pass:'Повторите пароль',
+    soc_connecting:'⚡ Подключение к',
+    soc_report_desc:'Опишите проблему (необязательно)...', soc_sending:'Отправка...',
+    soc_report_sent:'Жалоба отправлена', soc_send:'Отправить',
+    soc_fill_fields:'Заполните все поля',
+    soc_login:'Войти', soc_wait:'⏳ Подождите...',
+    soc_login_via:'Войти через', soc_reg_via:'Регистрация через',
+    soc_no_accounts:'Нет аккаунтов', soc_login_mc:'. Войдите в аккаунт Minecraft.',
+    soc_choose_acc:'Выберите аккаунт', soc_select:'Выбрать', soc_cancel:'Отмена',
+    soc_nick_len:'Никнейм: 1–64 символа', soc_pass_min:'Пароль минимум 6 символов',
+    soc_pass_mismatch:'Пароли не совпадают',
+    soc_enter_nick:'Введите новый никнейм', soc_nick_long:'Никнейм не может превышать 64 символа',
+    soc_server_err:'Ошибка сервера: нет данных пользователя',
+    soc_nick_changed:'Никнейм изменён на', soc_enter_dname:'Введите отображаемое имя',
+    soc_dname_long:'Максимум 32 символа', soc_server_err2:'Ошибка сервера',
+    soc_dname_changed:'Имя изменено на', soc_enter_pass:'Введите новый пароль',
+    soc_pass_set:'Пароль успешно установлен!', soc_no_active:'Нет активного аккаунта',
+    soc_acc_linked:'} успешно привязан!',
+    soc_msg_placeholder:'Сообщение...',
+    soc_change_avatar:'Изменить аватар', soc_your_id:'Ваш ID (нажмите для копирования)',
+    soc_id_copied:'ID: скопировано!', soc_no_mc:'Нет активного аккаунта Minecraft',
+    soc_skin_fail:'Не удалось загрузить скин', soc_err:'Ошибка:',
+    soc_block_user:'Заблокировать @', soc_search_nick:'Поиск по никнейму...',
+    soc_use_skin:'Использовать скин Minecraft', soc_reset_avatar:'Сбросить аватар',
+    soc_upload_photo:'Загрузить фото', soc_mc_skin:'Скин Minecraft',
+    soc_login_ms:'Войти через Microsoft', soc_login_ely:'Войти через Ely.by',
+    soc_register:'Зарегистрироваться', soc_reg_short:'Регистрация',
+    soc_nick_ph:'Никнейм', soc_pass_ph:'Пароль',
+    soc_nick_ph2:'Никнейм (до 64 символов)', soc_dname_ph:'Отображаемое имя (необязательно)',
+    soc_pass_ph2:'Пароль (мин. 6 символов)',
+    soc_logout_title:'Выйти?', soc_logout_desc:'Вы выйдете из MidLauncher Social.<br>Друзья увидят вас офлайн.',
+    soc_logout:'Выйти',
+    soc_delete_title:'Удалить аккаунт?', soc_delete_err:'Ошибка удаления',
+    soc_delete_desc:'>irreversible</b>.<br>All data, friends and messages will be deleted.',
+    soc_delete_confirm:'Удалить навсегда',
+    soc_confirm_pass:'Введите пароль для подтверждения', soc_confirm:'Подтвердить',
+    soc_enter_pass2:'Введите пароль',
+    soc_no_acc_service:'Сначала войди в {service} аккаунт в разделе «Аккаунты» лаунчера', soc_delete_full:'Это действие <b style="color:#cc4444;">необратимо</b>.<br>Все данные, друзья и сообщения будут удалены.',
+    // Admin panel
+    adm_panel:'Админ-панель', adm_users:'Пользователи', adm_reports:'Жалобы', adm_stats:'Статистика',
+    adm_loading:'Загрузка...', adm_no_users:'Нет пользователей', adm_no_reports:'Жалоб нет',
+    adm_copy_id:'Скопировать ID', adm_view:'Просмотр', adm_change_id:'Изменить ID',
+    adm_revoke:'Снять', adm_grant:'Админ', adm_unban:'Разбанить', adm_ban:'Бан',
+    adm_delete:'Удалить', adm_ban_title:'Бан @', adm_ban_desc:'Пользователь не сможет войти.',
+    adm_unban_title:'Разбан @', adm_unban_desc:'Пользователь снова сможет войти.',
+    adm_delete_title:'Удалить @', adm_delete_desc:'Аккаунт будет удалён безвозвратно.',
+    adm_change_id_title:'Изменить ID для @',
+    adm_change_id_desc:'Введите новый ID (любые символы). Внимание — это изменит основной идентификатор.',
+    adm_change_id_btn:'Изменить', adm_change_id_err:'Ошибка изменения ID:',
+    adm_grant_title:'Сделать @ администратором?', adm_grant_admin:'администратором?',
+    adm_grant_desc:'Пользователь получит доступ к панели администратора.', adm_grant_btn:'Сделать админом',
+    adm_revoke_title:'Снять права администратора у @',
+    adm_revoke_desc:'Пользователь потеряет доступ к панели администратора.',
+    adm_copy:'Скопировать', adm_close:'Закрыть',
+    adm_stat_users:'👥 Пользователей', adm_stat_friends:'🤝 Friendships',
+    adm_stat_msgs:'💬 Сообщений', adm_stat_online:'🟢 Online',
+    adm_banned:'[БАН]', adm_revoke_admin:'Снять права администратора',
+    adm_grant_admin_btn:'Выдать права администратора',
+    adm_spam:'Спам', adm_abuse:'Abuse', adm_cheat:'Читерство', adm_other:'Другое',
+    // Game/launcher misc
+    game_started:'Игра запущена!', game_closed:'Игра закрыта',
+    game_running:'⚠ Игра уже запущена', game_in:'● В игре',
+    sel_mc_ver:'Выбери версию MC', sel_mc_ver2:'Выберите версию Minecraft',
+    rename:'Переименовать',
+    dl_fail:'⚠ Не удалось скачать «', dl_no_slug:'»: нет slug',
+    dl_ing:'⬇ Скачивание', dl_done:'скачано', dl_err:'✗ Ошибка загрузки',
+    dl_vers:'⬇ Получение версий для «', dl_ver_err:'✗ Ошибка getModVersions для «',
+    dl_no_vers:'⚠ Нет версий для «', dl_no_file:'⚠ Нет файла в версии «',
+    dl_saved:'сохранено в', launch_err:'Ошибка запуска:',
+    cant_delete_mp:'Нельзя удалить — модпак запущен',
+    downloaded:'✓ Скачано', err_short:'Ошибка',
+    dl_m:'М скач.', dl_k:'К скач.', dl_n:'скач.',
+    importing:'Импорт...', loading_mods:'Загрузка модов...',
+    loading_short:'Загрузка...',
+    added_mods:'✓ Добавлен ({n} модов)',
+    // Mod details
+    dl_modpack:'↓ Скачать модпак', add_modpack:'+ В модпак',
+    platforms:'Платформы', categories:'Категории', mc_versions2:'Версии Minecraft',
+    no_versions:'Нет доступных версий', add_modpack2:'+ В модпак',
+    gallery_empty:'Галерея пуста', no_data:'Нет данных', changelog_na:'Ченджлог недоступен',
+    updated:'Обновлено', incompat_loader:'✗ Несовместимый загрузчик — поддерживается:',
+    incompat_loader2:'Несовместимый загрузчик модов',
+    add_mod_to_mp:'Добавить «{name}» в модпак',
+    // Mod categories
+    cat_adventure:'Приключения', cat_combat:'Боевые', cat_decoration:'Декорации',
+    cat_economy:'Экономика', cat_equipment:'Снаряжение', cat_food:'Еда',
+    cat_game_mechanics:'Механики', cat_library:'Библиотеки', cat_magic:'Магия',
+    cat_management:'Управление', cat_minigame:'Мини-игры', cat_mobs:'Мобы',
+    cat_optimization:'Оптимизация', cat_social:'Социальное', cat_storage:'Хранилище',
+    cat_technology:'Технологии', cat_transport:'Транспорт', cat_utility:'Утилиты',
+    cat_worldgen:'Генерация мира', cat_biome:'Биомы', cat_structure:'Структуры',
+    cat_dimension:'Измерения', cat_cursed:'Проклятые', cat_quests:'Квесты',
+    cat_building:'Строительство', cat_misc:'Разное',
+    // Shader categories
+    sh_atmosphere:'Атмосфера', sh_bloom:'Свечение', sh_cartoon:'Мультяшный',
+    sh_colored_light:'Цветное освещение', sh_fantasy:'Фэнтези', sh_foliage:'Листва',
+    sh_high:'Высокое качество', sh_low:'Низкое качество', sh_medium:'Среднее качество',
+    sh_path_tracing:'Трассировка путей', sh_realism:'Реализм', sh_reflections:'Отражения',
+    sh_semi_realism:'Полу-реализм', sh_shadows:'Тени', sh_vanilla:'Ванильный',
+    sh_hardcore:'Хардкор', sh_potato:'Картошка',
+    // Multiplayer/singleplayer
+    mp_multiplayer:'Мультиплеер', mp_singleplayer:'Одиночная',
+    env_both:'Клиент и сервер', env_client_only:'Только клиент', env_server_only:'Только сервер',
+    env_client_optional:'Клиент (+ опц. сервер)', env_server_optional:'Сервер (+ опц. клиент)',
+    env_both_optional:'Клиент и сервер (опц.)',
+    // Settings misc
+    bg_label:'Фон', theme_label:'Тема оформления', theme_light:'Светлая', theme_dark:'Тёмная', bg_animated:'Анимированный фон', bg_static:'Обычный фон',
+    reset_btn:'✕ Сбросить',
   },
   en: {
-    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Files', nav_settings:'Settings',
+    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Files', nav_settings:'Settings', nav_friends:'Friends',
     play:'Play', stop:'Stop', cancel:'Cancel',
     loading:'Loading...', search:'Search...', search_mods:'Search mods...',
     my_modpacks:'My Modpacks', tab_mod:'Mods', tab_resourcepack:'Resource Packs',
@@ -3540,9 +5215,119 @@ const T = {
     enter_query:'Enter a query to search',
     src_all:'All',
     ac_type_local:'Offline',
+
+    soc_friends:'Friends', soc_pending:'Requests', soc_account:'Account',
+    soc_online:'Online', soc_offline:'Offline', soc_connect:'Join',
+    soc_remove_friend:'Remove friend', soc_block:'Block', soc_report:'Report',
+    soc_no_friends:'No friends yet.', soc_add_hint:'Add by @username or ID',
+    soc_no_pending:'No incoming requests',
+    soc_new_nick:'New username', soc_display_name:'Display name',
+    soc_linked:'Linked', soc_not_linked:'Not linked',
+    soc_unlink:'Unlink', soc_link:'Link',
+    soc_link_ms:'Sign in via Microsoft', soc_link_ely:'Sign in via Ely.by',
+    soc_new_pass:'New password (min. 6 chars)', soc_repeat_pass:'Repeat password',
+    soc_connecting:'⚡ Connecting to',
+    soc_report_desc:'Describe the issue (optional)...', soc_sending:'Sending...',
+    soc_report_sent:'Report sent', soc_send:'Send',
+    soc_fill_fields:'Fill in all fields',
+    soc_login:'Sign in', soc_wait:'⏳ Please wait...',
+    soc_login_via:'Sign in via', soc_reg_via:'Register via',
+    soc_no_accounts:'No accounts', soc_login_mc:'. Sign in to a Minecraft account.',
+    soc_choose_acc:'Choose account', soc_select:'Select', soc_cancel:'Cancel',
+    soc_nick_len:'Username: 1–64 characters', soc_pass_min:'Password minimum 6 characters',
+    soc_pass_mismatch:'Passwords do not match',
+    soc_enter_nick:'Enter new username', soc_nick_long:'Username cannot exceed 64 characters',
+    soc_server_err:'Server error: no user data',
+    soc_nick_changed:'Username changed to', soc_enter_dname:'Enter display name',
+    soc_dname_long:'Max 32 characters', soc_server_err2:'Server error',
+    soc_dname_changed:'Name changed to', soc_enter_pass:'Enter new password',
+    soc_pass_set:'Password set successfully!', soc_no_active:'No active account',
+    soc_acc_linked:'} successfully linked!',
+    soc_msg_placeholder:'Message...',
+    soc_change_avatar:'Change avatar', soc_your_id:'Your ID (click to copy)',
+    soc_id_copied:'ID: copied!', soc_no_mc:'No active Minecraft account',
+    soc_skin_fail:'Could not load skin', soc_err:'Error:',
+    soc_block_user:'Block @', soc_search_nick:'Search by username...',
+    soc_use_skin:'Use Minecraft skin', soc_reset_avatar:'Reset avatar',
+    soc_upload_photo:'Upload photo', soc_mc_skin:'Minecraft skin',
+    soc_login_ms:'Sign in via Microsoft', soc_login_ely:'Sign in via Ely.by',
+    soc_register:'Register', soc_reg_short:'Register',
+    soc_nick_ph:'Username', soc_pass_ph:'Password',
+    soc_nick_ph2:'Username (up to 64 chars)', soc_dname_ph:'Display name (optional)',
+    soc_pass_ph2:'Password (min. 6 chars)',
+    soc_logout_title:'Sign out?', soc_logout_desc:'You will sign out of MidLauncher Social.<br>Friends will see you offline.',
+    soc_logout:'Sign out',
+    soc_delete_title:'Delete account?', soc_delete_err:'Delete error',
+    soc_delete_desc:'>irreversible</b>.<br>All data, friends and messages will be deleted.', soc_delete_full:'This action is <b style="color:#cc4444;">irreversible</b>.<br>All data, friends and messages will be deleted.',
+    soc_delete_confirm:'Delete permanently',
+    soc_confirm_pass:'Enter password to confirm', soc_confirm:'Confirm',
+    soc_enter_pass2:'Enter password',
+    soc_no_acc_service:'First sign in to your {service} account in the "Accounts" section',
+    adm_panel:'Admin panel', adm_users:'Users', adm_reports:'Reports', adm_stats:'Statistics',
+    adm_loading:'Loading...', adm_no_users:'No users', adm_no_reports:'No reports',
+    adm_copy_id:'Copy ID', adm_view:'View', adm_change_id:'Change ID',
+    adm_revoke:'Revoke', adm_grant:'Admin', adm_unban:'Unban', adm_ban:'Ban',
+    adm_delete:'Delete', adm_ban_title:'Ban @', adm_ban_desc:'User will not be able to sign in.',
+    adm_unban_title:'Unban @', adm_unban_desc:'User will be able to sign in again.',
+    adm_delete_title:'Delete @', adm_delete_desc:'Account will be permanently deleted.',
+    adm_change_id_title:'Change ID for @',
+    adm_change_id_desc:'Enter new ID (any characters). Warning — this changes the primary identifier.',
+    adm_change_id_btn:'Change', adm_change_id_err:'ID change error:',
+    adm_grant_title:'Make @ an administrator?', adm_grant_admin:'administrator?',
+    adm_grant_desc:'User will get access to the admin panel.', adm_grant_btn:'Make admin',
+    adm_revoke_title:'Remove admin rights from @',
+    adm_revoke_desc:'User will lose access to the admin panel.',
+    adm_copy:'Copy', adm_close:'Close',
+    adm_stat_users:'👥 Users', adm_stat_friends:'🤝 Friendships',
+    adm_stat_msgs:'💬 Messages', adm_stat_online:'🟢 Online',
+    adm_banned:'[BANNED]', adm_revoke_admin:'Revoke admin', adm_grant_admin_btn:'Grant admin',
+    adm_spam:'Spam', adm_abuse:'Abuse', adm_cheat:'Cheating', adm_other:'Other',
+    game_started:'Game started!', game_closed:'Game closed',
+    game_running:'⚠ Game already running', game_in:'● In game',
+    sel_mc_ver:'Select MC version', sel_mc_ver2:'Select Minecraft version',
+    rename:'Rename',
+    dl_fail:'⚠ Could not download «', dl_no_slug:'»: no slug',
+    dl_ing:'⬇ Downloading', dl_done:'downloaded', dl_err:'✗ Download error',
+    dl_vers:'⬇ Getting versions for «', dl_ver_err:'✗ getModVersions error for «',
+    dl_no_vers:'⚠ No versions for «', dl_no_file:'⚠ No file in version «',
+    dl_saved:'saved to', launch_err:'Launch error:',
+    cant_delete_mp:'Cannot delete — modpack is running',
+    downloaded:'✓ Downloaded', err_short:'Error',
+    dl_m:'M dls', dl_k:'K dls', dl_n:'dls',
+    importing:'Importing...', loading_mods:'Loading mods...',
+    loading_short:'Loading...',
+    added_mods:'✓ Added ({n} mods)',
+    dl_modpack:'↓ Download modpack', add_modpack:'+ To modpack',
+    platforms:'Platforms', categories:'Categories', mc_versions2:'Minecraft versions',
+    no_versions:'No versions available', add_modpack2:'+ Modpack',
+    gallery_empty:'Gallery empty', no_data:'No data', changelog_na:'Changelog unavailable',
+    updated:'Updated', incompat_loader:'✗ Incompatible loader — supported:',
+    incompat_loader2:'Incompatible mod loader',
+    add_mod_to_mp:'Add "{name}" to modpack',
+    cat_adventure:'Adventure', cat_combat:'Combat', cat_decoration:'Decoration',
+    cat_economy:'Economy', cat_equipment:'Equipment', cat_food:'Food',
+    cat_game_mechanics:'Game Mechanics', cat_library:'Library', cat_magic:'Magic',
+    cat_management:'Management', cat_minigame:'Mini-Game', cat_mobs:'Mobs',
+    cat_optimization:'Optimization', cat_social:'Social', cat_storage:'Storage',
+    cat_technology:'Technology', cat_transport:'Transport', cat_utility:'Utility',
+    cat_worldgen:'World Generation', cat_biome:'Biomes', cat_structure:'Structures',
+    cat_dimension:'Dimensions', cat_cursed:'Cursed', cat_quests:'Quests',
+    cat_building:'Building', cat_misc:'Miscellaneous',
+    sh_atmosphere:'Atmosphere', sh_bloom:'Bloom', sh_cartoon:'Cartoon',
+    sh_colored_light:'Colored Lighting', sh_fantasy:'Fantasy', sh_foliage:'Foliage',
+    sh_high:'High Quality', sh_low:'Low Quality', sh_medium:'Medium Quality',
+    sh_path_tracing:'Path Tracing', sh_realism:'Realism', sh_reflections:'Reflections',
+    sh_semi_realism:'Semi-Realism', sh_shadows:'Shadows', sh_vanilla:'Vanilla-like',
+    sh_hardcore:'Hardcore', sh_potato:'Potato',
+    mp_multiplayer:'Multiplayer', mp_singleplayer:'Singleplayer',
+    env_both:'Client and server', env_client_only:'Client only', env_server_only:'Server only',
+    env_client_optional:'Client (+ opt. server)', env_server_optional:'Server (+ opt. client)',
+    env_both_optional:'Client and server (opt.)',
+    bg_label:'Background', theme_label:'Theme', theme_light:'Light', theme_dark:'Dark', bg_animated:'Animated background', bg_static:'Static background',
+    reset_btn:'✕ Reset',
   },
   de: {
-    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Dateien', nav_settings:'Einstellungen',
+    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Dateien', nav_settings:'Einstellungen', nav_friends:'Freunde',
     play:'Spielen', stop:'Stop', cancel:'Abbrechen',
     loading:'Laden...', search:'Suchen...', search_mods:'Mods suchen...',
     my_modpacks:'Meine Modpacks', tab_mod:'Mods', tab_resourcepack:'Ressourcenpakete',
@@ -3723,9 +5508,116 @@ const T = {
     enter_query:'Suchanfrage eingeben',
     src_all:'Alle',
     ac_type_local:'Offline',
+
+    soc_friends:'Freunde', soc_pending:'Anfragen', soc_account:'Konto',
+    soc_online:'Online', soc_offline:'Offline', soc_connect:'Beitreten',
+    soc_remove_friend:'Freund entfernen', soc_block:'Blockieren', soc_report:'Melden',
+    soc_no_friends:'Noch keine Freunde.', soc_add_hint:'Hinzufügen per @username oder ID',
+    soc_no_pending:'Keine eingehenden Anfragen',
+    soc_new_nick:'Neuer Benutzername', soc_display_name:'Anzeigename',
+    soc_linked:'Verknüpft', soc_not_linked:'Nicht verknüpft',
+    soc_unlink:'Trennen', soc_link:'Verknüpfen',
+    soc_link_ms:'Mit Microsoft anmelden', soc_link_ely:'Mit Ely.by anmelden',
+    soc_new_pass:'Neues Passwort (mind. 6 Zeichen)', soc_repeat_pass:'Passwort wiederholen',
+    soc_connecting:'⚡ Verbinde mit',
+    soc_report_desc:'Problem beschreiben (optional)...', soc_sending:'Senden...',
+    soc_report_sent:'Meldung gesendet', soc_send:'Senden',
+    soc_fill_fields:'Alle Felder ausfüllen',
+    soc_login:'Anmelden', soc_wait:'⏳ Bitte warten...',
+    soc_login_via:'Anmelden via', soc_reg_via:'Registrieren via',
+    soc_no_accounts:'Keine Konten', soc_login_mc:'. Melde dich bei einem Minecraft-Konto an.',
+    soc_choose_acc:'Konto wählen', soc_select:'Wählen', soc_cancel:'Abbrechen',
+    soc_nick_len:'Benutzername: 1–64 Zeichen', soc_pass_min:'Passwort mind. 6 Zeichen',
+    soc_pass_mismatch:'Passwörter stimmen nicht überein',
+    soc_enter_nick:'Neuen Benutzernamen eingeben', soc_nick_long:'Benutzername max. 64 Zeichen',
+    soc_server_err:'Serverfehler: keine Benutzerdaten',
+    soc_nick_changed:'Benutzername geändert zu', soc_enter_dname:'Anzeigenamen eingeben',
+    soc_dname_long:'Max. 32 Zeichen', soc_server_err2:'Serverfehler',
+    soc_dname_changed:'Name geändert zu', soc_enter_pass:'Neues Passwort eingeben',
+    soc_pass_set:'Passwort erfolgreich gesetzt!', soc_no_active:'Kein aktives Konto',
+    soc_acc_linked:'} erfolgreich verknüpft!',
+    soc_msg_placeholder:'Nachricht...', soc_change_avatar:'Avatar ändern',
+    soc_your_id:'Deine ID (Klicken zum Kopieren)', soc_id_copied:'ID: kopiert!',
+    soc_no_mc:'Kein aktives Minecraft-Konto', soc_skin_fail:'Skin konnte nicht geladen werden',
+    soc_err:'Fehler:', soc_block_user:'Blockieren @', soc_search_nick:'Nach Benutzername suchen...',
+    soc_use_skin:'Minecraft-Skin verwenden', soc_reset_avatar:'Avatar zurücksetzen',
+    soc_upload_photo:'Foto hochladen', soc_mc_skin:'Minecraft-Skin',
+    soc_login_ms:'Mit Microsoft anmelden', soc_login_ely:'Mit Ely.by anmelden',
+    soc_register:'Registrieren', soc_reg_short:'Registrierung',
+    soc_nick_ph:'Benutzername', soc_pass_ph:'Passwort',
+    soc_nick_ph2:'Benutzername (bis 64 Zeichen)', soc_dname_ph:'Anzeigename (optional)',
+    soc_pass_ph2:'Passwort (mind. 6 Zeichen)',
+    soc_logout_title:'Abmelden?', soc_logout_desc:'Du meldest dich von MidLauncher Social ab.<br>Freunde sehen dich offline.',
+    soc_logout:'Abmelden',
+    soc_delete_title:'Konto löschen?', soc_delete_err:'Löschfehler',
+    soc_delete_desc:'>unwiderruflich</b>.<br>Alle Daten, Freunde und Nachrichten werden gelöscht.', soc_delete_full:'Diese Aktion ist <b style="color:#cc4444;">unwiderruflich</b>.<br>Alle Daten, Freunde und Nachrichten werden gelöscht.',
+    soc_delete_confirm:'Dauerhaft löschen',
+    soc_confirm_pass:'Passwort zur Bestätigung eingeben', soc_confirm:'Bestätigen',
+    soc_enter_pass2:'Passwort eingeben',
+    soc_no_acc_service:'Zuerst im {service}-Konto im Bereich „Konten" anmelden',
+    adm_panel:'Admin-Panel', adm_users:'Benutzer', adm_reports:'Meldungen', adm_stats:'Statistik',
+    adm_loading:'Laden...', adm_no_users:'Keine Benutzer', adm_no_reports:'Keine Meldungen',
+    adm_copy_id:'ID kopieren', adm_view:'Ansehen', adm_change_id:'ID ändern',
+    adm_revoke:'Entziehen', adm_grant:'Admin', adm_unban:'Entsperren', adm_ban:'Sperren',
+    adm_delete:'Löschen', adm_ban_title:'Sperren @', adm_ban_desc:'Benutzer kann sich nicht mehr anmelden.',
+    adm_unban_title:'Entsperren @', adm_unban_desc:'Benutzer kann sich wieder anmelden.',
+    adm_delete_title:'Löschen @', adm_delete_desc:'Konto wird dauerhaft gelöscht.',
+    adm_change_id_title:'ID ändern für @',
+    adm_change_id_desc:'Neue ID eingeben (beliebige Zeichen). Achtung — ändert den Primärschlüssel.',
+    adm_change_id_btn:'Ändern', adm_change_id_err:'ID-Änderungsfehler:',
+    adm_grant_title:'@ zum Administrator machen?', adm_grant_admin:'Administrator?',
+    adm_grant_desc:'Benutzer erhält Zugang zum Admin-Panel.', adm_grant_btn:'Admin machen',
+    adm_revoke_title:'Admin-Rechte entziehen von @',
+    adm_revoke_desc:'Benutzer verliert Zugang zum Admin-Panel.',
+    adm_copy:'Kopieren', adm_close:'Schließen',
+    adm_stat_users:'👥 Benutzer', adm_stat_friends:'🤝 Freundschaften',
+    adm_stat_msgs:'💬 Nachrichten', adm_stat_online:'🟢 Online',
+    adm_banned:'[GESPERRT]', adm_revoke_admin:'Admin entziehen', adm_grant_admin_btn:'Admin vergeben',
+    adm_spam:'Spam', adm_abuse:'Beleidigung', adm_cheat:'Cheating', adm_other:'Sonstiges',
+    game_started:'Spiel gestartet!', game_closed:'Spiel beendet',
+    game_running:'⚠ Spiel läuft bereits', game_in:'● Im Spiel',
+    sel_mc_ver:'MC-Version wählen', sel_mc_ver2:'Minecraft-Version wählen',
+    rename:'Umbenennen',
+    dl_fail:'⚠ Konnte «', dl_no_slug:'» nicht herunterladen: kein Slug',
+    dl_ing:'⬇ Lade herunter', dl_done:'heruntergeladen', dl_err:'✗ Download-Fehler',
+    dl_vers:'⬇ Versionen abrufen für «', dl_ver_err:'✗ getModVersions-Fehler für «',
+    dl_no_vers:'⚠ Keine Versionen für «', dl_no_file:'⚠ Keine Datei in Version «',
+    dl_saved:'gespeichert in', launch_err:'Startfehler:',
+    cant_delete_mp:'Kann nicht löschen — Modpack läuft',
+    downloaded:'✓ Heruntergeladen', err_short:'Fehler',
+    dl_m:'M Dls', dl_k:'K Dls', dl_n:'Dls',
+    importing:'Importieren...', loading_mods:'Mods laden...', loading_short:'Laden...',
+    added_mods:'✓ Hinzugefügt ({n} Mods)',
+    dl_modpack:'↓ Modpack herunterladen', add_modpack:'+ Zum Modpack',
+    platforms:'Plattformen', categories:'Kategorien', mc_versions2:'Minecraft-Versionen',
+    no_versions:'Keine Versionen verfügbar', add_modpack2:'+ Modpack',
+    gallery_empty:'Galerie leer', no_data:'Keine Daten', changelog_na:'Changelog nicht verfügbar',
+    updated:'Aktualisiert', incompat_loader:'✗ Inkompatibler Loader — unterstützt:',
+    incompat_loader2:'Inkompatibler Mod-Loader', add_mod_to_mp:'„{name}" zum Modpack hinzufügen',
+    cat_adventure:'Abenteuer', cat_combat:'Kampf', cat_decoration:'Dekoration',
+    cat_economy:'Wirtschaft', cat_equipment:'Ausrüstung', cat_food:'Essen',
+    cat_game_mechanics:'Spielmechanik', cat_library:'Bibliothek', cat_magic:'Magie',
+    cat_management:'Verwaltung', cat_minigame:'Minispiel', cat_mobs:'Mobs',
+    cat_optimization:'Optimierung', cat_social:'Soziales', cat_storage:'Lagerung',
+    cat_technology:'Technologie', cat_transport:'Transport', cat_utility:'Hilfsprogramme',
+    cat_worldgen:'Weltgenerierung', cat_biome:'Biome', cat_structure:'Strukturen',
+    cat_dimension:'Dimensionen', cat_cursed:'Verflucht', cat_quests:'Quests',
+    cat_building:'Bauen', cat_misc:'Verschiedenes',
+    sh_atmosphere:'Atmosphäre', sh_bloom:'Bloom', sh_cartoon:'Cartoon',
+    sh_colored_light:'Farbiges Licht', sh_fantasy:'Fantasy', sh_foliage:'Laub',
+    sh_high:'Hohe Qualität', sh_low:'Niedrige Qualität', sh_medium:'Mittlere Qualität',
+    sh_path_tracing:'Pfadverfolgung', sh_realism:'Realismus', sh_reflections:'Reflexionen',
+    sh_semi_realism:'Semi-Realismus', sh_shadows:'Schatten', sh_vanilla:'Vanilla-Stil',
+    sh_hardcore:'Hardcore', sh_potato:'Potato',
+    mp_multiplayer:'Mehrspieler', mp_singleplayer:'Einzelspieler',
+    env_both:'Client und Server', env_client_only:'Nur Client', env_server_only:'Nur Server',
+    env_client_optional:'Client (+ opt. Server)', env_server_optional:'Server (+ opt. Client)',
+    env_both_optional:'Client und Server (opt.)',
+    bg_label:'Hintergrund', theme_label:'Thema', theme_light:'Hell', theme_dark:'Dunkel', bg_animated:'Animierter Hintergrund', bg_static:'Statischer Hintergrund',
+    reset_btn:'✕ Zurücksetzen',
   },
   fr: {
-    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Fichiers', nav_settings:'Paramètres',
+    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Fichiers', nav_settings:'Paramètres', nav_friends:'Amis',
     play:'Jouer', stop:'Arrêter', cancel:'Annuler',
     loading:'Chargement...', search:'Rechercher...', search_mods:'Rechercher des mods...',
     my_modpacks:'Mes Modpacks', tab_mod:'Mods', tab_resourcepack:'Packs de ressources',
@@ -3906,9 +5798,116 @@ const T = {
     enter_query:'Entrez une requête pour rechercher',
     src_all:'Tous',
     ac_type_local:'Hors ligne',
+
+    soc_friends:'Amis', soc_pending:'Demandes', soc_account:'Compte',
+    soc_online:'En ligne', soc_offline:'Hors ligne', soc_connect:'Rejoindre',
+    soc_remove_friend:'Supprimer ami', soc_block:'Bloquer', soc_report:'Signaler',
+    soc_no_friends:'Pas encore d\'amis.', soc_add_hint:'Ajouter par @username ou ID',
+    soc_no_pending:'Aucune demande entrante',
+    soc_new_nick:'Nouveau pseudo', soc_display_name:'Nom d\'affichage',
+    soc_linked:'Lié', soc_not_linked:'Non lié',
+    soc_unlink:'Délier', soc_link:'Lier',
+    soc_link_ms:'Se connecter via Microsoft', soc_link_ely:'Se connecter via Ely.by',
+    soc_new_pass:'Nouveau mot de passe (min. 6 car.)', soc_repeat_pass:'Répéter le mot de passe',
+    soc_connecting:'⚡ Connexion à',
+    soc_report_desc:'Décrire le problème (optionnel)...', soc_sending:'Envoi...',
+    soc_report_sent:'Signalement envoyé', soc_send:'Envoyer',
+    soc_fill_fields:'Remplir tous les champs',
+    soc_login:'Se connecter', soc_wait:'⏳ Veuillez patienter...',
+    soc_login_via:'Se connecter via', soc_reg_via:'S\'inscrire via',
+    soc_no_accounts:'Aucun compte', soc_login_mc:'. Connectez-vous à un compte Minecraft.',
+    soc_choose_acc:'Choisir un compte', soc_select:'Sélectionner', soc_cancel:'Annuler',
+    soc_nick_len:'Pseudo : 1–64 caractères', soc_pass_min:'Mot de passe min. 6 caractères',
+    soc_pass_mismatch:'Les mots de passe ne correspondent pas',
+    soc_enter_nick:'Entrer un nouveau pseudo', soc_nick_long:'Pseudo max. 64 caractères',
+    soc_server_err:'Erreur serveur : pas de données utilisateur',
+    soc_nick_changed:'Pseudo changé en', soc_enter_dname:'Entrer le nom d\'affichage',
+    soc_dname_long:'Max. 32 caractères', soc_server_err2:'Erreur serveur',
+    soc_dname_changed:'Nom changé en', soc_enter_pass:'Entrer un nouveau mot de passe',
+    soc_pass_set:'Mot de passe défini avec succès !', soc_no_active:'Aucun compte actif',
+    soc_acc_linked:'} lié avec succès !',
+    soc_msg_placeholder:'Message...', soc_change_avatar:'Changer l\'avatar',
+    soc_your_id:'Votre ID (cliquer pour copier)', soc_id_copied:'ID : copié !',
+    soc_no_mc:'Aucun compte Minecraft actif', soc_skin_fail:'Impossible de charger le skin',
+    soc_err:'Erreur :', soc_block_user:'Bloquer @', soc_search_nick:'Rechercher par pseudo...',
+    soc_use_skin:'Utiliser le skin Minecraft', soc_reset_avatar:'Réinitialiser l\'avatar',
+    soc_upload_photo:'Télécharger une photo', soc_mc_skin:'Skin Minecraft',
+    soc_login_ms:'Se connecter via Microsoft', soc_login_ely:'Se connecter via Ely.by',
+    soc_register:'S\'inscrire', soc_reg_short:'Inscription',
+    soc_nick_ph:'Pseudo', soc_pass_ph:'Mot de passe',
+    soc_nick_ph2:'Pseudo (jusqu\'à 64 car.)', soc_dname_ph:'Nom d\'affichage (optionnel)',
+    soc_pass_ph2:'Mot de passe (min. 6 car.)',
+    soc_logout_title:'Se déconnecter ?', soc_logout_desc:'Vous serez déconnecté de MidLauncher Social.<br>Les amis vous verront hors ligne.',
+    soc_logout:'Se déconnecter',
+    soc_delete_title:'Supprimer le compte ?', soc_delete_err:'Erreur de suppression',
+    soc_delete_desc:'>irréversible</b>.<br>Toutes les données, amis et messages seront supprimés.', soc_delete_full:'Cette action est <b style="color:#cc4444;">irréversible</b>.<br>Toutes les données, amis et messages seront supprimés.',
+    soc_delete_confirm:'Supprimer définitivement',
+    soc_confirm_pass:'Entrer le mot de passe pour confirmer', soc_confirm:'Confirmer',
+    soc_enter_pass2:'Entrer le mot de passe',
+    soc_no_acc_service:'Connectez-vous d\'abord à votre compte {service} dans la section «Comptes»',
+    adm_panel:'Panneau admin', adm_users:'Utilisateurs', adm_reports:'Signalements', adm_stats:'Statistiques',
+    adm_loading:'Chargement...', adm_no_users:'Aucun utilisateur', adm_no_reports:'Aucun signalement',
+    adm_copy_id:'Copier ID', adm_view:'Voir', adm_change_id:'Changer ID',
+    adm_revoke:'Retirer', adm_grant:'Admin', adm_unban:'Débannir', adm_ban:'Bannir',
+    adm_delete:'Supprimer', adm_ban_title:'Bannir @', adm_ban_desc:'L\'utilisateur ne pourra plus se connecter.',
+    adm_unban_title:'Débannir @', adm_unban_desc:'L\'utilisateur pourra à nouveau se connecter.',
+    adm_delete_title:'Supprimer @', adm_delete_desc:'Le compte sera supprimé définitivement.',
+    adm_change_id_title:'Changer l\'ID de @',
+    adm_change_id_desc:'Entrer un nouvel ID (tous caractères). Attention — modifie l\'identifiant principal.',
+    adm_change_id_btn:'Changer', adm_change_id_err:'Erreur changement ID :',
+    adm_grant_title:'Faire @ administrateur ?', adm_grant_admin:'administrateur ?',
+    adm_grant_desc:'L\'utilisateur aura accès au panneau admin.', adm_grant_btn:'Rendre admin',
+    adm_revoke_title:'Retirer les droits admin de @',
+    adm_revoke_desc:'L\'utilisateur perdra l\'accès au panneau admin.',
+    adm_copy:'Copier', adm_close:'Fermer',
+    adm_stat_users:'👥 Utilisateurs', adm_stat_friends:'🤝 Amitiés',
+    adm_stat_msgs:'💬 Messages', adm_stat_online:'🟢 En ligne',
+    adm_banned:'[BANNI]', adm_revoke_admin:'Retirer admin', adm_grant_admin_btn:'Accorder admin',
+    adm_spam:'Spam', adm_abuse:'Abus', adm_cheat:'Triche', adm_other:'Autre',
+    game_started:'Jeu démarré !', game_closed:'Jeu fermé',
+    game_running:'⚠ Jeu déjà en cours', game_in:'● En jeu',
+    sel_mc_ver:'Choisir version MC', sel_mc_ver2:'Choisir version Minecraft',
+    rename:'Renommer',
+    dl_fail:'⚠ Impossible de télécharger «', dl_no_slug:'» : pas de slug',
+    dl_ing:'⬇ Téléchargement', dl_done:'téléchargé', dl_err:'✗ Erreur téléchargement',
+    dl_vers:'⬇ Récupération versions pour «', dl_ver_err:'✗ Erreur getModVersions pour «',
+    dl_no_vers:'⚠ Pas de versions pour «', dl_no_file:'⚠ Pas de fichier dans la version «',
+    dl_saved:'enregistré dans', launch_err:'Erreur de lancement :',
+    cant_delete_mp:'Impossible de supprimer — modpack en cours',
+    downloaded:'✓ Téléchargé', err_short:'Erreur',
+    dl_m:'M téléch.', dl_k:'K téléch.', dl_n:'téléch.',
+    importing:'Import...', loading_mods:'Chargement mods...', loading_short:'Chargement...',
+    added_mods:'✓ Ajouté ({n} mods)',
+    dl_modpack:'↓ Télécharger modpack', add_modpack:'+ Au modpack',
+    platforms:'Plateformes', categories:'Catégories', mc_versions2:'Versions Minecraft',
+    no_versions:'Aucune version disponible', add_modpack2:'+ Modpack',
+    gallery_empty:'Galerie vide', no_data:'Aucune donnée', changelog_na:'Journal des modifications indisponible',
+    updated:'Mis à jour', incompat_loader:'✗ Loader incompatible — pris en charge :',
+    incompat_loader2:'Mod loader incompatible', add_mod_to_mp:'Ajouter «{name}» au modpack',
+    cat_adventure:'Aventure', cat_combat:'Combat', cat_decoration:'Décoration',
+    cat_economy:'Économie', cat_equipment:'Équipement', cat_food:'Nourriture',
+    cat_game_mechanics:'Mécaniques de jeu', cat_library:'Bibliothèque', cat_magic:'Magie',
+    cat_management:'Gestion', cat_minigame:'Mini-jeu', cat_mobs:'Mobs',
+    cat_optimization:'Optimisation', cat_social:'Social', cat_storage:'Stockage',
+    cat_technology:'Technologie', cat_transport:'Transport', cat_utility:'Utilitaires',
+    cat_worldgen:'Génération du monde', cat_biome:'Biomes', cat_structure:'Structures',
+    cat_dimension:'Dimensions', cat_cursed:'Maudit', cat_quests:'Quêtes',
+    cat_building:'Construction', cat_misc:'Divers',
+    sh_atmosphere:'Atmosphère', sh_bloom:'Bloom', sh_cartoon:'Cartoon',
+    sh_colored_light:'Lumière colorée', sh_fantasy:'Fantaisie', sh_foliage:'Feuillage',
+    sh_high:'Haute qualité', sh_low:'Basse qualité', sh_medium:'Qualité moyenne',
+    sh_path_tracing:'Ray tracing', sh_realism:'Réalisme', sh_reflections:'Réflexions',
+    sh_semi_realism:'Semi-réalisme', sh_shadows:'Ombres', sh_vanilla:'Style vanilla',
+    sh_hardcore:'Hardcore', sh_potato:'Potato',
+    mp_multiplayer:'Multijoueur', mp_singleplayer:'Solo',
+    env_both:'Client et serveur', env_client_only:'Client seulement', env_server_only:'Serveur seulement',
+    env_client_optional:'Client (+ opt. serveur)', env_server_optional:'Serveur (+ opt. client)',
+    env_both_optional:'Client et serveur (opt.)',
+    bg_label:'Fond', theme_label:'Thème', theme_light:'Clair', theme_dark:'Sombre', bg_animated:'Fond animé', bg_static:'Fond statique',
+    reset_btn:'✕ Réinitialiser',
   },
   es: {
-    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Archivos', nav_settings:'Ajustes',
+    nav_launcher:'Launcher', nav_mods:'Mods', nav_files:'Archivos', nav_settings:'Ajustes', nav_friends:'Amigos',
     play:'Jugar', stop:'Detener', cancel:'Cancelar',
     loading:'Cargando...', search:'Buscar...', search_mods:'Buscar mods...',
     my_modpacks:'Mis Modpacks', tab_mod:'Mods', tab_resourcepack:'Paquetes de recursos',
@@ -4089,9 +6088,116 @@ const T = {
     enter_query:'Ingresa una consulta para buscar',
     src_all:'Todos',
     ac_type_local:'Sin conexión',
+
+    soc_friends:'Amigos', soc_pending:'Solicitudes', soc_account:'Cuenta',
+    soc_online:'En línea', soc_offline:'Desconectado', soc_connect:'Unirse',
+    soc_remove_friend:'Eliminar amigo', soc_block:'Bloquear', soc_report:'Reportar',
+    soc_no_friends:'Aún no hay amigos.', soc_add_hint:'Añadir por @usuario o ID',
+    soc_no_pending:'No hay solicitudes entrantes',
+    soc_new_nick:'Nuevo nombre de usuario', soc_display_name:'Nombre a mostrar',
+    soc_linked:'Vinculado', soc_not_linked:'No vinculado',
+    soc_unlink:'Desvincular', soc_link:'Vincular',
+    soc_link_ms:'Iniciar sesión con Microsoft', soc_link_ely:'Iniciar sesión con Ely.by',
+    soc_new_pass:'Nueva contraseña (mín. 6 car.)', soc_repeat_pass:'Repetir contraseña',
+    soc_connecting:'⚡ Conectando a',
+    soc_report_desc:'Describe el problema (opcional)...', soc_sending:'Enviando...',
+    soc_report_sent:'Reporte enviado', soc_send:'Enviar',
+    soc_fill_fields:'Rellena todos los campos',
+    soc_login:'Iniciar sesión', soc_wait:'⏳ Por favor espera...',
+    soc_login_via:'Iniciar sesión con', soc_reg_via:'Registrarse con',
+    soc_no_accounts:'Sin cuentas', soc_login_mc:'. Inicia sesión en una cuenta de Minecraft.',
+    soc_choose_acc:'Elegir cuenta', soc_select:'Seleccionar', soc_cancel:'Cancelar',
+    soc_nick_len:'Usuario: 1–64 caracteres', soc_pass_min:'Contraseña mínimo 6 caracteres',
+    soc_pass_mismatch:'Las contraseñas no coinciden',
+    soc_enter_nick:'Ingresa nuevo usuario', soc_nick_long:'Usuario máx. 64 caracteres',
+    soc_server_err:'Error de servidor: sin datos de usuario',
+    soc_nick_changed:'Usuario cambiado a', soc_enter_dname:'Ingresa nombre a mostrar',
+    soc_dname_long:'Máx. 32 caracteres', soc_server_err2:'Error de servidor',
+    soc_dname_changed:'Nombre cambiado a', soc_enter_pass:'Ingresa nueva contraseña',
+    soc_pass_set:'¡Contraseña establecida!', soc_no_active:'Sin cuenta activa',
+    soc_acc_linked:'} vinculado con éxito!',
+    soc_msg_placeholder:'Mensaje...', soc_change_avatar:'Cambiar avatar',
+    soc_your_id:'Tu ID (clic para copiar)', soc_id_copied:'ID: ¡copiado!',
+    soc_no_mc:'Sin cuenta activa de Minecraft', soc_skin_fail:'No se pudo cargar el skin',
+    soc_err:'Error:', soc_block_user:'Bloquear @', soc_search_nick:'Buscar por usuario...',
+    soc_use_skin:'Usar skin de Minecraft', soc_reset_avatar:'Restablecer avatar',
+    soc_upload_photo:'Subir foto', soc_mc_skin:'Skin de Minecraft',
+    soc_login_ms:'Iniciar sesión con Microsoft', soc_login_ely:'Iniciar sesión con Ely.by',
+    soc_register:'Registrarse', soc_reg_short:'Registro',
+    soc_nick_ph:'Usuario', soc_pass_ph:'Contraseña',
+    soc_nick_ph2:'Usuario (hasta 64 car.)', soc_dname_ph:'Nombre a mostrar (opcional)',
+    soc_pass_ph2:'Contraseña (mín. 6 car.)',
+    soc_logout_title:'¿Cerrar sesión?', soc_logout_desc:'Cerrarás sesión en MidLauncher Social.<br>Los amigos te verán desconectado.',
+    soc_logout:'Cerrar sesión',
+    soc_delete_title:'¿Eliminar cuenta?', soc_delete_err:'Error al eliminar',
+    soc_delete_desc:'>irreversible</b>.<br>Todos los datos, amigos y mensajes serán eliminados.', soc_delete_full:'Esta acción es <b style="color:#cc4444;">irreversible</b>.<br>Todos los datos, amigos y mensajes serán eliminados.',
+    soc_delete_confirm:'Eliminar permanentemente',
+    soc_confirm_pass:'Ingresa contraseña para confirmar', soc_confirm:'Confirmar',
+    soc_enter_pass2:'Ingresa contraseña',
+    soc_no_acc_service:'Primero inicia sesión en tu cuenta de {service} en la sección «Cuentas»',
+    adm_panel:'Panel de admin', adm_users:'Usuarios', adm_reports:'Reportes', adm_stats:'Estadísticas',
+    adm_loading:'Cargando...', adm_no_users:'Sin usuarios', adm_no_reports:'Sin reportes',
+    adm_copy_id:'Copiar ID', adm_view:'Ver', adm_change_id:'Cambiar ID',
+    adm_revoke:'Revocar', adm_grant:'Admin', adm_unban:'Desbanear', adm_ban:'Banear',
+    adm_delete:'Eliminar', adm_ban_title:'Banear @', adm_ban_desc:'El usuario no podrá iniciar sesión.',
+    adm_unban_title:'Desbanear @', adm_unban_desc:'El usuario podrá iniciar sesión nuevamente.',
+    adm_delete_title:'Eliminar @', adm_delete_desc:'La cuenta será eliminada permanentemente.',
+    adm_change_id_title:'Cambiar ID de @',
+    adm_change_id_desc:'Ingresa nuevo ID (cualquier carácter). Atención — cambia el identificador principal.',
+    adm_change_id_btn:'Cambiar', adm_change_id_err:'Error al cambiar ID:',
+    adm_grant_title:'¿Hacer @ administrador?', adm_grant_admin:'¿administrador?',
+    adm_grant_desc:'El usuario tendrá acceso al panel de admin.', adm_grant_btn:'Hacer admin',
+    adm_revoke_title:'Revocar derechos de admin de @',
+    adm_revoke_desc:'El usuario perderá acceso al panel de admin.',
+    adm_copy:'Copiar', adm_close:'Cerrar',
+    adm_stat_users:'👥 Usuarios', adm_stat_friends:'🤝 Amistades',
+    adm_stat_msgs:'💬 Mensajes', adm_stat_online:'🟢 En línea',
+    adm_banned:'[BANEADO]', adm_revoke_admin:'Revocar admin', adm_grant_admin_btn:'Otorgar admin',
+    adm_spam:'Spam', adm_abuse:'Abuso', adm_cheat:'Trampa', adm_other:'Otro',
+    game_started:'¡Juego iniciado!', game_closed:'Juego cerrado',
+    game_running:'⚠ El juego ya está ejecutándose', game_in:'● En juego',
+    sel_mc_ver:'Seleccionar versión MC', sel_mc_ver2:'Seleccionar versión Minecraft',
+    rename:'Renombrar',
+    dl_fail:'⚠ No se pudo descargar «', dl_no_slug:'»: sin slug',
+    dl_ing:'⬇ Descargando', dl_done:'descargado', dl_err:'✗ Error de descarga',
+    dl_vers:'⬇ Obteniendo versiones para «', dl_ver_err:'✗ Error getModVersions para «',
+    dl_no_vers:'⚠ Sin versiones para «', dl_no_file:'⚠ Sin archivo en versión «',
+    dl_saved:'guardado en', launch_err:'Error de lanzamiento:',
+    cant_delete_mp:'No se puede eliminar — modpack en ejecución',
+    downloaded:'✓ Descargado', err_short:'Error',
+    dl_m:'M desc.', dl_k:'K desc.', dl_n:'desc.',
+    importing:'Importando...', loading_mods:'Cargando mods...', loading_short:'Cargando...',
+    added_mods:'✓ Añadido ({n} mods)',
+    dl_modpack:'↓ Descargar modpack', add_modpack:'+ Al modpack',
+    platforms:'Plataformas', categories:'Categorías', mc_versions2:'Versiones Minecraft',
+    no_versions:'Sin versiones disponibles', add_modpack2:'+ Modpack',
+    gallery_empty:'Galería vacía', no_data:'Sin datos', changelog_na:'Registro de cambios no disponible',
+    updated:'Actualizado', incompat_loader:'✗ Loader incompatible — soportado:',
+    incompat_loader2:'Mod loader incompatible', add_mod_to_mp:'Añadir «{name}» al modpack',
+    cat_adventure:'Aventura', cat_combat:'Combate', cat_decoration:'Decoración',
+    cat_economy:'Economía', cat_equipment:'Equipamiento', cat_food:'Comida',
+    cat_game_mechanics:'Mecánicas', cat_library:'Biblioteca', cat_magic:'Magia',
+    cat_management:'Gestión', cat_minigame:'Minijuego', cat_mobs:'Mobs',
+    cat_optimization:'Optimización', cat_social:'Social', cat_storage:'Almacenamiento',
+    cat_technology:'Tecnología', cat_transport:'Transporte', cat_utility:'Utilidades',
+    cat_worldgen:'Generación del mundo', cat_biome:'Biomas', cat_structure:'Estructuras',
+    cat_dimension:'Dimensiones', cat_cursed:'Maldito', cat_quests:'Misiones',
+    cat_building:'Construcción', cat_misc:'Miscelánea',
+    sh_atmosphere:'Atmósfera', sh_bloom:'Bloom', sh_cartoon:'Caricatura',
+    sh_colored_light:'Luz de colores', sh_fantasy:'Fantasía', sh_foliage:'Follaje',
+    sh_high:'Alta calidad', sh_low:'Baja calidad', sh_medium:'Calidad media',
+    sh_path_tracing:'Trazado de rutas', sh_realism:'Realismo', sh_reflections:'Reflejos',
+    sh_semi_realism:'Semi-realismo', sh_shadows:'Sombras', sh_vanilla:'Estilo vainilla',
+    sh_hardcore:'Hardcore', sh_potato:'Potato',
+    mp_multiplayer:'Multijugador', mp_singleplayer:'Un jugador',
+    env_both:'Cliente y servidor', env_client_only:'Solo cliente', env_server_only:'Solo servidor',
+    env_client_optional:'Cliente (+ opt. servidor)', env_server_optional:'Servidor (+ opt. cliente)',
+    env_both_optional:'Cliente y servidor (opt.)',
+    bg_label:'Fondo', theme_label:'Tema', theme_light:'Claro', theme_dark:'Oscuro', bg_animated:'Fondo animado', bg_static:'Fondo estático',
+    reset_btn:'✕ Restablecer',
   },
   uk: {
-    nav_launcher:'Лаунчер', nav_mods:'Моди', nav_files:'Файли', nav_settings:'Налаштування',
+    nav_launcher:'Лаунчер', nav_mods:'Моди', nav_files:'Файли', nav_settings:'Налаштування', nav_friends:'Друзі',
     play:'Грати', stop:'Стоп', cancel:'Скасувати',
     loading:'Завантаження...', search:'Пошук...', search_mods:'Пошук модів...',
     my_modpacks:'Мої модпаки', tab_mod:'Моди', tab_resourcepack:'Ресурс паки',
@@ -4272,6 +6378,113 @@ const T = {
     enter_query:'Введіть запит для пошуку',
     src_all:'Всі',
     ac_type_local:'Офлайн',
+
+    soc_friends:'Друзі', soc_pending:'Заявки', soc_account:'Акаунт',
+    soc_online:'В мережі', soc_offline:'Не в мережі', soc_connect:'Підключитися',
+    soc_remove_friend:'Видалити з друзів', soc_block:'Заблокувати', soc_report:'Поскаржитися',
+    soc_no_friends:'Друзів поки немає.', soc_add_hint:'Додай за @username або ID',
+    soc_no_pending:'Немає вхідних заявок',
+    soc_new_nick:'Новий нікнейм', soc_display_name:'Ім\'я для відображення',
+    soc_linked:'Прив\'язано', soc_not_linked:'Не прив\'язано',
+    soc_unlink:'Від\'язати', soc_link:'Прив\'язати',
+    soc_link_ms:'Авторизуйся через Microsoft', soc_link_ely:'Авторизуйся через Ely.by',
+    soc_new_pass:'Новий пароль (мін. 6 символів)', soc_repeat_pass:'Repeat password',
+    soc_connecting:'⚡ Підключення до',
+    soc_report_desc:'Опиши проблему (необов\'язково)...', soc_sending:'Надсилаємо...',
+    soc_report_sent:'Скаргу надіслано', soc_send:'Надіслати',
+    soc_fill_fields:'Заповни всі поля',
+    soc_login:'Увійти', soc_wait:'⏳ Зачекайте...',
+    soc_login_via:'Увійти через', soc_reg_via:'Зареєструватися через',
+    soc_no_accounts:'Немає акаунтів', soc_login_mc:'. Увійди в потрібний акаунт Minecraft.',
+    soc_choose_acc:'Вибери акаунт', soc_select:'Вибрати', soc_cancel:'Скасувати',
+    soc_nick_len:'Нік: від 1 до 64 символів', soc_pass_min:'Пароль мінімум 6 символів',
+    soc_pass_mismatch:'Паролі не збігаються',
+    soc_enter_nick:'Введи новий нік', soc_nick_long:'Нік не повинен перевищувати 64 символи',
+    soc_server_err:'Помилка сервера: немає даних користувача',
+    soc_nick_changed:'Нік змінено на', soc_enter_dname:'Введи ім\'я для відображення',
+    soc_dname_long:'Не більше 32 символів', soc_server_err2:'Помилка сервера',
+    soc_dname_changed:'Ім\'я змінено на', soc_enter_pass:'Введи новий пароль',
+    soc_pass_set:'Пароль успішно встановлено!', soc_no_active:'Немає активного акаунту',
+    soc_acc_linked:'} успішно прив\'язано!',
+    soc_msg_placeholder:'Повідомлення...', soc_change_avatar:'Змінити аватар',
+    soc_your_id:'Ваш ID (клацни для копіювання)', soc_id_copied:'ID: скопійовано!',
+    soc_no_mc:'Немає активного акаунту Minecraft', soc_skin_fail:'Не вдалося завантажити скін',
+    soc_err:'Помилка:', soc_block_user:'Заблокувати @', soc_search_nick:'Пошук за ніком...',
+    soc_use_skin:'Використати скін Minecraft', soc_reset_avatar:'Скинути аватар',
+    soc_upload_photo:'Завантажити фото', soc_mc_skin:'Скін Minecraft',
+    soc_login_ms:'Увійти через Microsoft', soc_login_ely:'Увійти через Ely.by',
+    soc_register:'Зареєструватися', soc_reg_short:'Реєстрація',
+    soc_nick_ph:'Нік', soc_pass_ph:'Password',
+    soc_nick_ph2:'Нік (до 64 символів)', soc_dname_ph:'Ім\'я для відображення (необов\'язково)',
+    soc_pass_ph2:'Пароль (мін. 6 символів)',
+    soc_logout_title:'Вийти з акаунту?', soc_logout_desc:'Ти вийдеш з MidLauncher Social.<br>Друзі побачать тебе офлайн.',
+    soc_logout:'Вийти',
+    soc_delete_title:'Видалити акаунт?', soc_delete_err:'Помилка видалення',
+    soc_delete_desc:'>незворотно</b>.<br>Всі дані, друзі та повідомлення будуть видалені.', soc_delete_full:'Ця дія є <b style="color:#cc4444;">незворотною</b>.<br>Всі дані, друзі та повідомлення будуть видалені.',
+    soc_delete_confirm:'Видалити назавжди',
+    soc_confirm_pass:'Введи пароль для підтвердження', soc_confirm:'Підтвердити',
+    soc_enter_pass2:'Enter password',
+    soc_no_acc_service:'Спочатку увійди в акаунт {service} у розділі «Акаунти» лаунчера',
+    adm_panel:'Адмін-панель', adm_users:'Користувачі', adm_reports:'Скарги', adm_stats:'Статистика',
+    adm_loading:'Завантаження...', adm_no_users:'Немає користувачів', adm_no_reports:'Скарг немає',
+    adm_copy_id:'Скопіювати ID', adm_view:'Перегляд', adm_change_id:'Змінити ID',
+    adm_revoke:'Зняти', adm_grant:'Адмін', adm_unban:'Розбанити', adm_ban:'Забанити',
+    adm_delete:'Видалити', adm_ban_title:'Забанити @', adm_ban_desc:'Користувач не зможе увійти в акаунт.',
+    adm_unban_title:'Розбанити @', adm_unban_desc:'Користувач знову зможе увійти.',
+    adm_delete_title:'Видалити @', adm_delete_desc:'Акаунт буде видалено назавжди.',
+    adm_change_id_title:'Змінити ID для @',
+    adm_change_id_desc:'Введи новий ID (будь-які символи). Обережно — це змінить ідентифікатор.',
+    adm_change_id_btn:'Змінити', adm_change_id_err:'Помилка зміни ID:',
+    adm_grant_title:'Зробити @ адміністратором?', adm_grant_admin:'адміністратором?',
+    adm_grant_desc:'Користувач отримає доступ до панелі управління.', adm_grant_btn:'Зробити адміном',
+    adm_revoke_title:'Зняти права адміністратора у @',
+    adm_revoke_desc:'Користувач втратить доступ до панелі управління.',
+    adm_copy:'Скопіювати', adm_close:'Закрити',
+    adm_stat_users:'👥 Користувачів', adm_stat_friends:'🤝 Friendships',
+    adm_stat_msgs:'💬 Повідомлень', adm_stat_online:'🟢 Online',
+    adm_banned:'[БАН]', adm_revoke_admin:'Зняти адміна', adm_grant_admin_btn:'Видати адміна',
+    adm_spam:'Spam', adm_abuse:'Образи', adm_cheat:'Cheating', adm_other:'Інше',
+    game_started:'Гру розпочато!', game_closed:'Гру закрито',
+    game_running:'⚠ Гра вже запущена', game_in:'● У грі',
+    sel_mc_ver:'Обери версію MC', sel_mc_ver2:'Обери версію Minecraft',
+    rename:'Перейменувати',
+    dl_fail:'⚠ Не вдалося завантажити «', dl_no_slug:'»: немає slug',
+    dl_ing:'⬇ Завантажую', dl_done:'завантажено', dl_err:'✗ Помилка завантаження',
+    dl_vers:'⬇ Отримую версії «', dl_ver_err:'✗ Помилка getModVersions для «',
+    dl_no_vers:'⚠ Немає версій для «', dl_no_file:'⚠ Немає файлу у версії «',
+    dl_saved:'збережено в', launch_err:'Помилка запуску:',
+    cant_delete_mp:'Не можна видалити — модпак запущено',
+    downloaded:'✓ Завантажено', err_short:'Помилка',
+    dl_m:'M завант.', dl_k:'K завант.', dl_n:'завант.',
+    importing:'Імпорт...', loading_mods:'Завантажую моди...', loading_short:'Завантаження...',
+    added_mods:'✓ Додано ({n} модів)',
+    dl_modpack:'↓ Завантажити модпак', add_modpack:'+ До модпаку',
+    platforms:'Платформи', categories:'Категорії', mc_versions2:'Версії Minecraft',
+    no_versions:'Немає доступних версій', add_modpack2:'+ Modpack',
+    gallery_empty:'Галерея порожня', no_data:'Немає даних', changelog_na:'Журнал змін недоступний',
+    updated:'Оновлено', incompat_loader:'✗ Несумісний завантажувач — підтримується:',
+    incompat_loader2:'Несумісний мод-завантажувач', add_mod_to_mp:'Додати «{name}» до модпаку',
+    cat_adventure:'Пригоди', cat_combat:'Бій', cat_decoration:'Декорації',
+    cat_economy:'Економіка', cat_equipment:'Спорядження', cat_food:'Їжа',
+    cat_game_mechanics:'Механіки гри', cat_library:'Бібліотека', cat_magic:'Магія',
+    cat_management:'Управління', cat_minigame:'Міні-гра', cat_mobs:'Моби',
+    cat_optimization:'Оптимізація', cat_social:'Соціальне', cat_storage:'Сховище',
+    cat_technology:'Технології', cat_transport:'Transport', cat_utility:'Утиліти',
+    cat_worldgen:'Генерація світу', cat_biome:'Біоми', cat_structure:'Структури',
+    cat_dimension:'Виміри', cat_cursed:'Прокляте', cat_quests:'Квести',
+    cat_building:'Будівництво', cat_misc:'Різне',
+    sh_atmosphere:'Atmosphere', sh_bloom:'Свічення', sh_cartoon:'Мультяшний',
+    sh_colored_light:'Кольорове освітлення', sh_fantasy:'Фентезі', sh_foliage:'Рослинність',
+    sh_high:'Висока якість', sh_low:'Низька якість', sh_medium:'Середня якість',
+    sh_path_tracing:'Трасування шляху', sh_realism:'Реалізм', sh_reflections:'Відображення',
+    sh_semi_realism:'Напівреалізм', sh_shadows:'Тіні', sh_vanilla:'Ванільний стиль',
+    sh_hardcore:'Hardcore', sh_potato:'Легкий',
+    mp_multiplayer:'Мультиплеєр', mp_singleplayer:'Одиночна',
+    env_both:'Клієнт і сервер', env_client_only:'Тільки клієнт', env_server_only:'Тільки сервер',
+    env_client_optional:'Клієнт (+ опц. сервер)', env_server_optional:'Сервер (+ опц. клієнт)',
+    env_both_optional:'Клієнт і сервер (опц.)',
+    bg_label:'Фон', theme_label:'Тема оформлення', theme_light:'Світла', theme_dark:'Темна', bg_animated:'Анімований фон', bg_static:'Звичайний фон',
+    reset_btn:'✕ Скинути',
   },
 };
 
@@ -4490,20 +6703,22 @@ async function init() {
       applyBackgroundType(config.settings?.backgroundType || 'plain');
       applyTheme(config.settings?.theme || 'dark');
     }
+    // ── Show greeting FIRST, right after config loaded ──
     applyI18n();
-    await loadLauncher();
-    updateStaticI18n();
-    // Приветствие — ПОСЛЕ всех applyI18n/updateStaticI18n, data-i18n убран с элемента
     const name = acCurrentAccount?.username;
     greetEl.textContent = name ? t('splash_hi') + name + '!' : t('splash_greeting');
+    greetEl.style.opacity = '1';
+    // ── Then load the rest ──
+    await loadLauncher();
+    updateStaticI18n();
     // Update nav with saved language
-    const navMap = { launcher:'nav_launcher', mods:'nav_mods', files:'nav_files', settings:'nav_settings' };
+    const navMap = { launcher:'nav_launcher', mods:'nav_mods', files:'nav_files', settings:'nav_settings', friends:'nav_friends' };
     document.querySelectorAll('.menu-item[data-target]').forEach(el => {
       el.textContent = t(navMap[el.dataset.target]);
     });
   } catch(e) {
     console.error('init error:', e);
-    subEl.textContent = 'Ошибка запуска: ' + e.message;
+    subEl.textContent = t('launch_err') + ' ' + e.message;
   } finally {
     document.getElementById('content').style.opacity = '1';
     // Hide splash with delay so it's visible for at least a moment
@@ -4615,7 +6830,7 @@ function acGetSkin(acc, callback) {
 function acUpdateAccountBtn(acc) {
   const canvas = document.getElementById('accountBtnCanvas');
   const letter = document.getElementById('accountBtnLetter');
-  if (!acc) { canvas.style.display = 'none'; letter.style.display = 'flex'; letter.textContent = '👤'; return; }
+  if (!acc) { canvas.style.display = 'none'; letter.style.display = 'flex'; letter.textContent = (_socialUser?.displayName || _socialUser?.username || '?')[0].toUpperCase(); return; }
   letter.style.display = 'flex'; letter.textContent = acc.username.charAt(0).toUpperCase(); canvas.style.display = 'none';
   acGetSkin(acc, dataUrl => {
     if (!dataUrl || dataUrl === 'logo') return;
@@ -4651,7 +6866,7 @@ function acRenderAccountList() {
     const isActive = acCurrentAccount && acc.username === acCurrentAccount.username && acc.type === acCurrentAccount.type;
     const div = document.createElement('div');
     div.className = 'ac-account-item' + (isActive ? ' active-account' : '');
-    div.innerHTML = `<div class="ac-account-skin" id="acSkinThumb_${i}"></div><div class="ac-account-info"><div class="ac-account-name">${acc.username}</div><div class="ac-account-type">${TYPE_LABELS[acc.type]||acc.type}</div></div><button class="ac-account-del" onclick="acRemoveAccount(${i})" title="Удалить">✕</button>`;
+    div.innerHTML = `<div class="ac-account-skin" id="acSkinThumb_${i}"></div><div class="ac-account-info"><div class="ac-account-name">${escHtml(acc.username)}</div><div class="ac-account-type">${escHtml(TYPE_LABELS[acc.type]||acc.type)}</div></div><button class="ac-account-del" onclick="acRemoveAccount(${i})" title="${t('adm_delete')}">✕</button>`;
     div.addEventListener('click', e => { if (!e.target.classList.contains('ac-account-del')) acSetActive(i); });
     list.appendChild(div);
     const thumb = document.getElementById(`acSkinThumb_${i}`);
@@ -4700,7 +6915,7 @@ function acLoginMs() {
   acClearError('msError');
   const btn = document.querySelector('#acBodyMs .ac-method-btn');
   if (btn) { btn.disabled = true; btn.textContent = t('opening_login'); }
-  if (!window.electronAPI?.msOAuth) { acShowError('msError', t('npm_start_warn')); if (btn) { btn.disabled = false; btn.textContent = 'Войти через Microsoft'; } return; }
+  if (!window.electronAPI?.msOAuth) { acShowError('msError', t('npm_start_warn')); if (btn) { btn.disabled = false; btn.textContent = t('soc_login_ms'); } return; }
   window.electronAPI.msOAuth()
     .then(result => { if (result.error) { acShowError('msError', result.error); return; } acAddAccount({ type:'ms', username:result.username, accessToken:result.accessToken, uuid:result.uuid, refreshToken:result.refreshToken }); })
     .catch(() => acShowError('msError', t('auth_error')))

@@ -1,12 +1,179 @@
 {
-  "name": "my-launcher",
+  "name": "midlauncher",
+  "productName": "MidLauncher",
   "version": "1.0.0",
+  "description": "MidLauncher - Minecraft Launcher",
   "main": "main.js",
+  "author": {
+    "name": "MidLauncher"
+  },
   "scripts": {
-    "start": "electron . --no-sandbox"
+    "start": "electron . --no-sandbox",
+    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux --x64",
+    "dist:mac": "electron-builder --mac",
+    "postinstall": "node patch-builder.js"
+  },
+  "build": {
+    "appId": "com.mnd.midlauncher",
+    "productName": "MidLauncher",
+    "copyright": "Copyright 2025 MidLauncher",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "icon.png",
+      "icon.ico",
+      "node_modules/**/*",
+      "!node_modules/electron/**/*",
+      "!node_modules/electron-builder/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "."
+    },
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MidLauncher",
+      "menuCategory": "MidLauncher",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "license": "LICENSE.txt",
+      "include": "installer.nsh",
+      "artifactName": "MidLauncher-Setup-${version}.exe",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "multiLanguageInstaller": true
+    },
+    "portable": {
+      "artifactName": "MidLauncher-${version}-Portable.exe",
+      "requestExecutionLevel": "user"
+    },
+    "linux": {
+      "icon": "icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "description": "MidLauncher - Minecraft Launcher",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libdrm2",
+        "libgbm1"
+      ],
+      "afterInstall": "scripts/after-install.sh",
+      "afterRemove": "scripts/after-remove.sh"
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}.AppImage"
+    },
+    "mac": {
+      "icon": "icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games"
+    },
+    "dmg": {
+      "title": "MidLauncher ${version}",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "extraResources": [
+      {
+        "from": "launcher-config.json",
+        "to": "launcher-config.json"
+      },
+      {
+        "from": "manifest-cache.json",
+        "to": "manifest-cache.json"
+      },
+      {
+        "from": "authlib-injector.jar",
+        "to": "authlib-injector.jar"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "MidLauncher",
+        "schemes": [
+          "midlauncher"
+        ]
+      }
+    ]
   },
   "dependencies": {
-    "electron": "31.7.1",
+    "adm-zip": "^0.5.16",
     "minecraft-launcher-core": "^3.16.4"
+  },
+  "devDependencies": {
+    "electron": "31.7.1",
+    "electron-builder": "^24.13.3"
   }
 }

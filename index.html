@@ -35,6 +35,7 @@
     <div class="menu-item active" data-target="launcher" data-i18n="nav_launcher">Лаунчер</div>
     <div class="menu-item" data-target="mods" data-i18n="nav_mods">Моды</div>
     <div class="menu-item" data-target="files" data-i18n="nav_files">Файлы</div>
+    <div class="menu-item" data-target="friends" data-i18n="nav_friends">Друзья</div>
     <div class="menu-item" data-target="settings" data-i18n="nav_settings">Настройки</div>
     <div class="active-line" id="activeLine"></div>
   </div>
@@ -136,7 +137,7 @@
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;margin-top:2px;">
       <div style="display:flex;flex-direction:column;gap:8px;">
-        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;">${t('version_mc')}</div>
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;" data-i18n="version_mc">Версия Minecraft</div>
         <div><div style="font-size:11px;color:#484860;margin-bottom:4px;" data-i18n="releases_label">Релизы</div><div id="mddReleaseWrap" class="dd-wrap"></div></div>
         <div><div style="font-size:11px;color:#484860;margin-bottom:4px;" data-i18n="snapshots_label">Снапшоты</div><div id="mddSnapshotWrap" class="dd-wrap"></div></div>
       </div>
@@ -151,7 +152,7 @@
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;" id="modalLoaderVerCol">
-        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;">${t('loader_ver')}</div>
+        <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;" data-i18n="loader_ver">Загрузчик</div>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#353548;font-size:13px;">${t('loader_unavail')}</div>
       </div>
     </div>

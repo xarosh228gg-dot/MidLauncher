@@ -17,8 +17,37 @@ let mainWindow;
 let minecraftProcess;
 let launchCancelled = false;
 
-const CONFIG_PATH = path.join(__dirname, 'launcher-config.json');
-const MANIFEST_CACHE_PATH = path.join(__dirname, 'manifest-cache.json');
+// ── Writable user data dir → AppData/Roaming/.midlauncher ──
+const _ROAMING = process.platform === 'win32'
+  ? (process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'))
+  : (process.platform === 'darwin'
+    ? path.join(os.homedir(), 'Library', 'Application Support')
+    : path.join(os.homedir(), '.config'));
+const USER_DATA = path.join(_ROAMING, '.midlauncher');
+if (!fs.existsSync(USER_DATA)) fs.mkdirSync(USER_DATA, { recursive: true });
+
+// IMPORTANT: must be called before app is ready so Electron stores
+// localStorage, IndexedDB, session data etc. in .midlauncher too
+app.setPath('userData', USER_DATA);
+
+const CONFIG_PATH         = path.join(USER_DATA, 'launcher-config.json');
+const MANIFEST_CACHE_PATH = path.join(USER_DATA, 'manifest-cache.json');
+
+// ── On first launch: copy default files from resources into userData ──
+;(function seedUserData() {
+  const names = ['launcher-config.json', 'manifest-cache.json'];
+  names.forEach(name => {
+    const dest = path.join(USER_DATA, name);
+    if (fs.existsSync(dest)) return;
+    const candidates = [
+      path.join(process.resourcesPath, name),   // installed: next to app.asar
+      path.join(__dirname, name),               // dev: project root
+    ];
+    for (const src of candidates) {
+      try { if (fs.existsSync(src)) { fs.mkdirSync(USER_DATA, { recursive: true }); fs.copyFileSync(src, dest); return; } } catch {}
+    }
+  });
+})();
 const MANIFEST_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // ── In-memory config cache (avoid re-reading disk on every saveConfig) ──
@@ -41,15 +70,53 @@ function createWindow() {
   // DevTools enabled for debugging
 }
 
+// ── Deep link: midlauncher:// ─────────────────────────────────────────────────
+// Регистрируем протокол midlauncher:// для автовхода после подтверждения email
+if (process.defaultApp) {
+  if (process.argv.length >= 2) app.setAsDefaultProtocolClient('midlauncher', process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient('midlauncher');
+}
+
+function handleDeepLink(url) {
+  if (!url || !mainWindow) return;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'verify') {
+      const token = parsed.searchParams.get('token');
+      if (token) {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send('deeplink-verify', token);
+      }
+    }
+  } catch(e) { console.error('[deeplink]', e.message); }
+}
+
+// Windows/Linux: второй экземпляр передаёт аргументы первому
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_, argv) => {
+    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
+    const url = argv.find(a => a.startsWith('midlauncher://'));
+    if (url) handleDeepLink(url);
+  });
+}
+
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
+// macOS: открытие по URL
+app.on('open-url', (event, url) => { event.preventDefault(); handleDeepLink(url); });
+
 // ═══════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════
-const CUSTOM_VERSIONS_DIR = path.join(__dirname, 'custom-versions');
-const MODPACKS_DIR        = path.join(__dirname, 'modpacks');
+const CUSTOM_VERSIONS_DIR = path.join(USER_DATA, 'custom-versions');
+const MODPACKS_DIR        = path.join(USER_DATA, 'modpacks');
 
 function sanitizeName(name) {
   return name.replace(/[^\w\u0400-\u04FF\s\-]/g, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'unnamed';
@@ -354,7 +421,7 @@ ipcMain.on('launch-minecraft', async (event, payload) => {
   const sendProgress = perc => send('progress', perc);
   const cfg = readConfig();
   const settings = cfg.settings || {};
-  const mcRoot = settings.gameDir ? path.join(settings.gameDir, 'minecraft') : path.join(__dirname, 'minecraft');
+  const mcRoot = settings.gameDir ? path.join(settings.gameDir, 'minecraft') : path.join(USER_DATA, 'minecraft');
 
   const checkCancelled = () => {
     if (launchCancelled) throw new Error('__CANCELLED__');
@@ -439,7 +506,14 @@ ipcMain.on('launch-minecraft', async (event, payload) => {
     // Ely.by authlib-injector JVM args for server auth + skin
     const jvmArgs = [];
     if (account && account.type === 'elyby') {
-      const injectorPath = path.join(__dirname, 'authlib-injector.jar');
+      const injectorPath = (() => {
+    const candidates = [
+      path.join(process.resourcesPath, 'authlib-injector.jar'),
+      path.join(__dirname, 'authlib-injector.jar'),
+    ];
+    for (const p of candidates) { if (fs.existsSync(p)) return p; }
+    return path.join(process.resourcesPath, 'authlib-injector.jar');
+  })();
       if (!fs.existsSync(injectorPath)) {
         sendStatus('⬇ Скачивание authlib-injector.jar...');
         try {
@@ -1097,7 +1171,7 @@ ipcMain.handle('download-mod', async (event, { fileUrl, filename, category, dest
   const instanceFolderMap = { mod:'mods', resourcepack:'resourcepacks', shader:'shaderpacks', modpack:'modpacks', datapack:'datapacks' };
   const folder   = (instanceName ? instanceFolderMap[category] : folderMap[category]) || 'mods';
   const settings = readConfig().settings || {};
-  const mcRoot   = settings.gameDir ? path.join(settings.gameDir, 'minecraft') : path.join(__dirname, 'minecraft');
+  const mcRoot   = settings.gameDir ? path.join(settings.gameDir, 'minecraft') : path.join(USER_DATA, 'minecraft');
 
   let destDir;
   if (overrideDestDir) {
@@ -1220,7 +1294,7 @@ ipcMain.handle('get-modpack-mods', async (_, { source, slug, versionId }) => {
 // ═══════════════════════════════════════════════════
 // FILE BROWSER
 // ═══════════════════════════════════════════════════
-const MC_ROOT = path.join(__dirname, 'minecraft');
+const MC_ROOT = path.join(USER_DATA, 'minecraft');
 
 ipcMain.handle('fs-list', async (_, dirPath) => {
   try {
@@ -1295,7 +1369,7 @@ ipcMain.handle('open-mp-folder', async (_, { safeName }) => {
     const cfg = readConfig();
     const mcRoot = cfg.settings?.gameDir
       ? path.join(cfg.settings.gameDir, 'minecraft')
-      : path.join(__dirname, 'minecraft');
+      : path.join(USER_DATA, 'minecraft');
     const folderPath = path.join(mcRoot, 'versions', safeName);
     fs.mkdirSync(folderPath, { recursive: true });
     await shell.openPath(folderPath);
@@ -1322,4 +1396,170 @@ ipcMain.handle('fs-copy-file', async (_, { srcPath, destDir }) => {
     await fsPromises.copyFile(srcPath, path.join(fullDest, filename));
     return { success: true };
   } catch(e) { return { error: e.message }; }
+});
+// ═══════════════════════════════════════════════════
+// SOCIAL API (proxy to local server on port 3747)
+// ═══════════════════════════════════════════════════
+const SOCIAL_BASE = process.env.SOCIAL_URL || 'https://weqeecharm8y5g-production.up.railway.app';
+
+function socialRequest({ method = 'GET', path: urlPath, token, body }) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try { url = new URL(SOCIAL_BASE + urlPath); }
+    catch(e) { return reject(new Error('Invalid SOCIAL_BASE URL: ' + SOCIAL_BASE)); }
+
+    const isHttps = url.protocol === 'https:';
+    const mod = isHttps ? https : http;
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const headers = { 'Content-Type': 'application/json', 'User-Agent': 'MidLauncher/1.0' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
+
+    const port = url.port ? parseInt(url.port, 10) : (isHttps ? 443 : 80);
+
+    const req = mod.request({
+      hostname: url.hostname,
+      port,
+      path: url.pathname + url.search,
+      method,
+      headers,
+    }, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        let data; try { data = JSON.parse(d); } catch { data = d; }
+        console.log('[social]', method, urlPath, '→', res.statusCode, typeof data === 'object' ? JSON.stringify(data).slice(0,200) : String(data).slice(0,200));
+        resolve({ status: res.statusCode, data });
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(new Error('Request timeout')); });
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+ipcMain.handle('social-register',      async (_, { username, displayName, password }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/register', body:{ username, displayName, password } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-login',         async (_, { username, password }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/login', body:{ username, password } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-oauth-login',   async (_, { type, externalId, externalUsername }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/oauth-login', body:{ type, externalId, externalUsername } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-change-username', async (_, { token, username }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/change-username', token, body:{ username } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-change-display-name', async (_, { token, displayName }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/change-display-name', token, body:{ displayName } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-link',          async (_, { token, type, externalId, externalUsername }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/link', token, body:{ type, externalId, externalUsername } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-unlink',        async (_, { token, type }) => {
+  try { return await socialRequest({ method:'DELETE', path:'/auth/link/'+type, token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-me',          async (_, { token }) => {
+  try { return await socialRequest({ method:'GET', path:'/me', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-friends',     async (_, { token }) => {
+  try { return await socialRequest({ method:'GET', path:'/friends', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-add-friend',  async (_, { token, username }) => {
+  try { return await socialRequest({ method:'POST', path:'/friends/add', token, body:{ username } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-accept',      async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'POST', path:'/friends/accept', token, body:{ userId } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-remove',      async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'DELETE', path:`/friends/${userId}`, token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-search',      async (_, { token, query }) => {
+  try { return await socialRequest({ method:'GET', path:`/users/search?q=${encodeURIComponent(query||'')}`, token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-resend-code',  async (_, { email }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/resend-code', body:{ email } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-messages',    async (_, { token, friendId, limit, before }) => {
+  try {
+    let p = `/messages/${friendId}`;
+    const params = []; if (limit) params.push('limit='+limit); if (before) params.push('before='+before);
+    if (params.length) p += '?' + params.join('&');
+    return await socialRequest({ method:'GET', path:p, token });
+  } catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-change-password', async (_, { token, password }) => {
+  try { return await socialRequest({ method:'POST', path:'/auth/change-password', token, body:{ password } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-delete-account', async (_, { token, password }) => {
+  try { return await socialRequest({ method:'DELETE', path:'/auth/account', token, body:{ password } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-block',              async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'POST', path:'/users/block', token, body:{ userId } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-unblock',            async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'DELETE', path:'/users/block/'+userId, token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-report',             async (_, { token, userId, reason, text }) => {
+  try { return await socialRequest({ method:'POST', path:'/reports', token, body:{ userId, reason, text } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-stats',        async (_, { token }) => {
+  try { return await socialRequest({ method:'GET', path:'/admin/stats', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-users',        async (_, { token, query }) => {
+  try { return await socialRequest({ method:'GET', path:'/admin/users?q='+encodeURIComponent(query||''), token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-reports',      async (_, { token }) => {
+  try { return await socialRequest({ method:'GET', path:'/admin/reports', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-ban',          async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'POST', path:'/admin/users/'+userId+'/ban', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-unban',        async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'POST', path:'/admin/users/'+userId+'/unban', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-delete-user',  async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'DELETE', path:'/admin/users/'+userId, token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-dismiss-report', async (_, { token, reportId }) => {
+  try { return await socialRequest({ method:'DELETE', path:'/admin/reports/'+reportId, token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-grant-admin',  async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'POST', path:'/admin/users/'+userId+'/grant-admin', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-revoke-admin', async (_, { token, userId }) => {
+  try { return await socialRequest({ method:'POST', path:'/admin/users/'+userId+'/revoke-admin', token }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
+});
+ipcMain.handle('social-admin-change-id', async (_, { token, userId, newId }) => {
+  try { return await socialRequest({ method:'POST', path:'/admin/users/'+userId+'/change-id', token, body:{ newId } }); }
+  catch(e) { return { status:0, data:{ error:e.message } }; }
 });
