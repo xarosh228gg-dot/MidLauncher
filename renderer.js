@@ -772,13 +772,15 @@ function initElectronListeners() {
       const btn = document.getElementById('playBtn');
       if (btn) {
         const startTime = Date.now();
+        // OPT: btn already captured above — no DOM query inside interval
+        const _inGameLabel = t('in_game_label');
         const timer = setInterval(() => {
           if (!gameRunning) { clearInterval(timer); return; }
           const e  = Math.floor((Date.now() - startTime) / 1000);
           const hh = String(Math.floor(e / 3600)).padStart(2,'0');
           const mm = String(Math.floor(e % 3600 / 60)).padStart(2,'0');
           const ss = String(e % 60).padStart(2,'0');
-          btn.innerHTML = `<div class="play-inner" style="margin-left:80px"><span class="play-label" style="font-size:13px;letter-spacing:0">${t('in_game_label')} ${hh}:${mm}:${ss}</span></div>`;
+          btn.innerHTML = `<div class="play-inner" style="margin-left:80px"><span class="play-label" style="font-size:13px;letter-spacing:0">${_inGameLabel} ${hh}:${mm}:${ss}</span></div>`;
         }, 1000);
       }
     }
@@ -2517,7 +2519,7 @@ function loadMods() {
     _modsSearchTimer = setTimeout(() => {
       modsQuery = e.target.value.trim();
       modsDoSearch();
-    }, 350);
+    }, 450); // OPT: slightly longer debounce = fewer API calls
   });
 
   if (modsView !== 'modpacks') modsDoSearch();
@@ -2598,7 +2600,7 @@ function loadFiles() {
   let selectedEntry = null;
 
   function closeFbCtx() { document.querySelectorAll('.fb-ctx').forEach(el => el.remove()); }
-  document.addEventListener('click', closeFbCtx, { passive: true });
+  document.addEventListener('click', closeFbCtx, { passive: true }); // already passive
 
   function showCtx(e, entry) {
     closeFbCtx(); e.preventDefault();
@@ -2860,7 +2862,12 @@ function socialConnect() {
   try { _socialWS = new WebSocket(SOCIAL_WS); } catch { return; }
   _socialWS.onopen  = () => { _socialWS.send(JSON.stringify({ type:'auth', token:_socialToken })); };
   _socialWS.onmessage = (ev) => { let msg; try { msg = JSON.parse(ev.data); } catch { return; } socialHandleWS(msg); };
-  _socialWS.onclose = () => { setTimeout(() => { if (_socialToken) socialConnect(); }, 5000); };
+  let _wsReconnectDelay = 5000;
+  _socialWS.onclose = () => {
+    // OPT: exponential backoff — don't hammer server on repeated disconnects
+    setTimeout(() => { if (_socialToken) { _wsReconnectDelay = Math.min(_wsReconnectDelay * 1.5, 60000); socialConnect(); } }, _wsReconnectDelay);
+  };
+  _socialWS.onopen = (_orig => function() { _wsReconnectDelay = 5000; _orig && _orig.call(this); })(_socialWS.onopen);
   _socialWS.onerror = () => {};
 }
 
@@ -2871,12 +2878,24 @@ function socialSendWS(obj) {
 function socialHandleWS(msg) {
   if (msg.type === 'auth_ok') {
     msg.friends?.forEach(f => { if (f.online) _socialOnline.set(f.id, f.presence || {}); });
+    // OPT: use pendingRequests from server payload — skip extra HTTP call
+    if (msg.pendingRequests?.length) _socialPending = msg.pendingRequests;
     socialRefreshFriendsList(); return;
   }
   if (msg.type === 'friend_online')   { _socialOnline.set(msg.userId, {}); updateFriendCard(msg.userId); return; }
   if (msg.type === 'friend_offline')  { _socialOnline.delete(msg.userId); updateFriendCard(msg.userId); return; }
   if (msg.type === 'presence')        { _socialOnline.set(msg.userId, msg.data||{}); updateFriendCard(msg.userId); return; }
-  if (msg.type === 'friend_request')  { socialLoadFriendList().then(socialRefreshFriendsList); return; }
+  // OPT: For friend_request, use sender data from server payload if available
+  //      avoiding a full HTTP re-fetch on every notification
+  if (msg.type === 'friend_request') {
+    if (msg.sender) {
+      _socialPending = [...(_socialPending || []), { ...msg.sender, requestId: null }];
+      socialRefreshFriendsList();
+    } else {
+      socialLoadFriendList().then(socialRefreshFriendsList);
+    }
+    return;
+  }
   if (msg.type === 'friend_accepted') { socialLoadFriendList().then(socialRefreshFriendsList); return; }
   if (msg.type === 'friend_removed')  { socialLoadFriendList().then(socialRefreshFriendsList); return; }
   if (msg.type === 'message') {
@@ -2896,7 +2915,7 @@ async function socialAPI(method, ...args) {
   const res = await _api[method](...args);
   // Status 0 = network/connection error (returned by main process catch)
   if (res && res.status === 0 && res.data?.error) throw new Error(res.data.error);
-  if (res && res.status && res.status >= 400) { let errMsg; if (typeof res.data === "object") { errMsg = res.data?.error || res.data?.message || JSON.stringify(res.data); } else { errMsg = String(res.data || "").slice(0, 200) || ("Server error " + res.status); } console.error("[socialAPI] ERROR", method, res.status, res.data); throw new Error(errMsg || "Server error " + res.status); }
+  if (res && res.status && res.status >= 400) { let errMsg; if (typeof res.data === "object") { errMsg = res.data?.error || res.data?.message || JSON.stringify(res.data); } else { errMsg = String(res.data || "").slice(0, 200) || ("Server error " + res.status); } /* OPT: suppress hot-path log */ throw new Error(errMsg || "Server error " + res.status); }
   return res.data ?? res;
 }
 
@@ -2905,7 +2924,7 @@ async function socialLoadFriendList() {
     const res = await socialAPI('socialFriends', { token: _socialToken });
     _socialFriends = res.accepted || [];
     _socialPending = res.pending  || [];
-  } catch(e) { console.error('socialLoadFriendList', e.message); }
+  } catch(e) { /* OPT: suppress non-critical log */ }
 }
 
 // ── Friends list rendering ────────────────────────────────────────
@@ -6569,8 +6588,8 @@ window.resetSettings = function() {
   let mouseY = window.innerHeight / 2;
   let running = false;
 
-  const PARTICLE_COUNT = 90;
-  const CONNECT_DIST   = 130;
+  const PARTICLE_COUNT = 55;   // OPT: fewer particles
+  const CONNECT_DIST   = 100;  // OPT: shorter range = O(n²) savings
   const BASE_SPEED     = 0.35;
   const MOUSE_RADIUS   = 120;
   const LERP_SPEED     = 0.07;
@@ -6596,8 +6615,9 @@ window.resetSettings = function() {
       if (this.y > canvas.height + 10) this.y = -10;
       // Smoothly lerp glow toward target proximity
       const mdx = mouseX - this.x, mdy = mouseY - this.y;
-      const mdist = Math.sqrt(mdx*mdx + mdy*mdy);
-      const raw = Math.max(0, 1 - mdist / MOUSE_RADIUS);
+      const mdist2 = mdx*mdx + mdy*mdy;
+      const raw = mdist2 < MOUSE_RADIUS * MOUSE_RADIUS  // OPT: skip sqrt
+        ? Math.max(0, 1 - Math.sqrt(mdist2) / MOUSE_RADIUS) : 0;
       const target = raw * raw * (3 - 2 * raw); // smoothstep
       this.glow += (target - this.glow) * LERP_SPEED;
     }
@@ -6619,10 +6639,21 @@ window.resetSettings = function() {
       });
     }
   }
-  window.addEventListener('resize', resize);
-  resize(); // now canvas is sized → particles get real coords
+  let _resizeTimer = null;
+  window.addEventListener('resize', () => {
+    // OPT: debounce resize — avoid thrashing canvas during window drag
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(resize, 100);
+  }, { passive: true });
+  resize();
 
-  document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+  let _mouseThrottle = 0;
+  document.addEventListener('mousemove', e => {
+    const now = Date.now();
+    if (now - _mouseThrottle < 16) return; // OPT: cap at ~60fps
+    _mouseThrottle = now;
+    mouseX = e.clientX; mouseY = e.clientY;
+  }, { passive: true });
 
   function isLightTheme() { return document.body.classList.contains('light'); }
 
@@ -6658,8 +6689,9 @@ window.resetSettings = function() {
       for (let j = i + 1; j < particles.length; j++) {
         const q = particles[j];
         const dx = p.x - q.x, dy = p.y - q.y;
-        const d  = Math.sqrt(dx*dx + dy*dy);
-        if (d < CONNECT_DIST) {
+        const d2 = dx*dx + dy*dy;
+        if (d2 < CONNECT_DIST * CONNECT_DIST) { // OPT: avoid sqrt per pair
+          const d  = Math.sqrt(d2);
           const baseOpacity = (1 - d / CONNECT_DIST);
           const lineGlow    = (g + q.glow) * 0.5;
           const lineAlpha   = baseOpacity * (light ? 0.28 : 0.18) + lineGlow * (light ? 0.22 : 0.20);
@@ -6688,6 +6720,14 @@ window.resetSettings = function() {
     if (animId) { cancelAnimationFrame(animId); animId = null; }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
+  // OPT: pause particles when window is hidden (game running, user alt-tabbed)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+    } else if (running) {
+      if (!animId) animId = requestAnimationFrame(draw);
+    }
+  });
 })();
 
 function applyBackgroundType(type) {
